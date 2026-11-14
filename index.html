@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#e3e9f3" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0d111a" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#e3e9f3">
+<meta name="color-scheme" content="only light">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="النوتة">
@@ -30,21 +30,8 @@
   --display:"Aref Ruqaa","Amiri","Traditional Arabic",serif;
   --body:"Readex Pro","Segoe UI","Tahoma","Noto Sans Arabic",sans-serif;
   --pitch:36px;
+  color-scheme:light;
   --gutter:52px;
-}
-@media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){
-    --paper:#151b28; --desk:#0d111a; --rule:#27344f; --margin:#8f3548;
-    --ink:#e7edf8; --muted:#8d99b0; --accent:#86a2ff; --pen:#ff6f86; --on-accent:#0d1220;
-    --t0:#7f9dff; --t1:#ff8097; --t2:#56c79a; --t3:#e0aa3e; --t4:#b094f5;
-    color-scheme:dark;
-  }
-}
-:root[data-theme="dark"]{
-  --paper:#151b28; --desk:#0d111a; --rule:#27344f; --margin:#8f3548;
-  --ink:#e7edf8; --muted:#8d99b0; --accent:#86a2ff; --pen:#ff6f86; --on-accent:#0d1220;
-  --t0:#7f9dff; --t1:#ff8097; --t2:#56c79a; --t3:#e0aa3e; --t4:#b094f5;
-  color-scheme:dark;
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
@@ -157,6 +144,8 @@ ul{list-style:none;margin:0;padding:0}
 .mv{width:40px;height:40px;border:1.5px solid var(--rule);border-radius:10px}
 .mv[disabled]{opacity:.35}
 .pts small{color:var(--muted);font-size:12px}
+.tab{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.tab.drag{position:relative;z-index:2;transform:translateY(-3px) scale(1.06);box-shadow:0 6px 16px rgba(20,30,60,.28);outline:2px solid var(--tc)}
 /* phone fit */
 html,body{overflow:hidden;overscroll-behavior:none}
 @supports (height:100dvh){html,body{height:100dvh}}
@@ -356,6 +345,7 @@ function clearDone(){del("tasks",S.tasks.filter(function(t){return t.listId===S.
 
 /* ---------- render ---------- */
 function render(){
+  if(drag.active){drag.pending=true;return}
   S.lists.sort(function(a,b){return (a.order||0)-(b.order||0)});
   if(S.cur!==HOME&&!curList())S.cur=HOME;
   var home=S.cur===HOME;
@@ -364,8 +354,8 @@ function render(){
     on:{click:function(){S.cur=HOME;S.fresh=null;render()}}},h("span",{text:"الملخص"})));
   S.lists.forEach(function(l){
     var left=S.tasks.filter(function(t){return t.listId===l.id&&!t.done}).length;
-    tabs.appendChild(h("button",{class:"tab",role:"tab","aria-selected":l.id===S.cur?"true":"false",style:tc(l),
-      on:{click:function(){S.cur=l.id;S.fresh=null;render()}}},
+    tabs.appendChild(h("button",{class:"tab",role:"tab","data-id":l.id,"aria-selected":l.id===S.cur?"true":"false",style:tc(l),
+      on:{click:function(){if(drag.just)return;S.cur=l.id;S.fresh=null;render()}}},
       h("span",{text:l.name}),h("span",{class:"n",text:String(left)})));
   });
   tabs.appendChild(h("button",{class:"tab add","aria-label":"لستة جديدة",text:"+",on:{click:function(){listSheet(null)}}}));
@@ -392,6 +382,67 @@ function render(){
   }
   page.scrollTop=keep;
 }
+/* ---------- drag tabs to reorder ---------- */
+var drag={el:null,active:false,just:false,pending:false,timer:null,x:0,y:0};
+function dragOn(){drag.active=true;drag.el.classList.add("drag");try{navigator.vibrate&&navigator.vibrate(15)}catch(e){}}
+function dragMove(x){
+  var bar=$("tabs"),r=bar.getBoundingClientRect();
+  if(x<r.left+36)bar.scrollBy({left:-14});else if(x>r.right-36)bar.scrollBy({left:14});
+  var others=bar.querySelectorAll(".tab[data-id]");
+  for(var i=0;i<others.length;i++){
+    var o=others[i];if(o===drag.el)continue;
+    var b=o.getBoundingClientRect();
+    if(x>b.left&&x<b.right){
+      var after=drag.el.compareDocumentPosition(o)&Node.DOCUMENT_POSITION_FOLLOWING;
+      bar.insertBefore(drag.el,after?o.nextSibling:o);break;
+    }
+  }
+}
+function dragEnd(){
+  clearTimeout(drag.timer);
+  var was=drag.active,el=drag.el;drag.el=null;drag.active=false;
+  if(!was)return;
+  el.classList.remove("drag");
+  drag.just=true;setTimeout(function(){drag.just=false},350);
+  var ids=[].map.call($("tabs").querySelectorAll(".tab[data-id]"),function(e){return e.getAttribute("data-id")});
+  var changed=false;
+  ids.forEach(function(id,i){
+    var l=S.lists.filter(function(x){return x.id===id})[0];
+    if(l&&l.order!==i+1){changed=true;patch("lists",id,{order:i+1})}
+  });
+  drag.pending=false;if(!changed||isCloud())render();
+}
+(function(){
+  var bar=$("tabs");
+  function pick(e){var t=e.target.closest?e.target.closest(".tab[data-id]"):null;return t}
+  bar.addEventListener("touchstart",function(e){
+    var t=pick(e);if(!t||e.touches.length>1)return;
+    drag.el=t;drag.x=e.touches[0].clientX;drag.y=e.touches[0].clientY;
+    drag.timer=setTimeout(dragOn,350);
+  },{passive:true});
+  bar.addEventListener("touchmove",function(e){
+    if(!drag.el)return;
+    var p=e.touches[0];
+    if(!drag.active){
+      if(Math.abs(p.clientX-drag.x)>8||Math.abs(p.clientY-drag.y)>8){clearTimeout(drag.timer);drag.el=null}
+      return;
+    }
+    e.preventDefault();dragMove(p.clientX);
+  },{passive:false});
+  bar.addEventListener("touchend",dragEnd);
+  bar.addEventListener("touchcancel",dragEnd);
+  bar.addEventListener("contextmenu",function(e){if(drag.el||drag.active)e.preventDefault()});
+  bar.addEventListener("mousedown",function(e){
+    var t=pick(e);if(!t||e.button!==0)return;
+    drag.el=t;drag.x=e.clientX;
+  });
+  document.addEventListener("mousemove",function(e){
+    if(!drag.el||e.buttons!==1)return;
+    if(!drag.active){if(Math.abs(e.clientX-drag.x)<7)return;dragOn()}
+    e.preventDefault();dragMove(e.clientX);
+  });
+  document.addEventListener("mouseup",function(){if(drag.el)dragEnd()});
+})();
 function renderHome(page){
   page.setAttribute("style","--tc:var(--accent)");
   var open=S.tasks.filter(function(t){return !t.done}).length;
@@ -426,7 +477,7 @@ function orderSheet(){
   }
   draw();
   openSheet(h("div",{class:"sheet"},h("h3",{text:"ترتيب الصفحات"}),
-    h("p",{text:"اللي فوق هنا بيبقى أول تبويب بعد الملخص."}),box,
+    h("p",{text:"اللي فوق هنا بيبقى أول تبويب بعد الملخص. وتقدر كمان تسحب التبويب نفسه من فوق: دوس عليه مطوّل واسحب."}),box,
     h("div",{class:"btns"},
       h("button",{type:"button",class:"btn main",text:"احفظ الترتيب",on:{click:function(){
         arr.forEach(function(l,i){if(l.order!==i+1)patch("lists",l.id,{order:i+1})});closeSheet();
