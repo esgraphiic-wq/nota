@@ -148,6 +148,10 @@ ul{list-style:none;margin:0;padding:0}
 .pts small{color:var(--muted);font-size:12px}
 .tab{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 .tab.drag{position:relative;z-index:2;transform:translateY(-3px) scale(1.06);box-shadow:0 6px 16px rgba(20,30,60,.28);outline:2px solid var(--tc)}
+.due{display:inline-block;font-size:12px;line-height:1;color:var(--accent);white-space:nowrap;margin-inline-start:8px;font-variant-numeric:tabular-nums}
+.due.late{color:var(--pen);font-weight:600}
+.done .due{color:var(--muted);font-weight:400}
+.sheet a.btn{display:inline-flex;align-items:center;text-decoration:none;color:var(--accent)}
 /* phone fit */
 html,body{overflow:hidden;overscroll-behavior:none}
 @supports (height:100dvh){html,body{height:100dvh}}
@@ -454,6 +458,20 @@ function renderHome(page){
       h("button",{class:"ai",text:"لخّص كل حاجة",on:{click:function(){aiSheet(null)}}}),
       h("button",{text:"رتّب الصفحات",on:{click:orderSheet}}))));
   page.appendChild(h("p",{class:"note",text:S.lists.length?(open?"قدامك "+open+" حاجة لسه ماخلصتش.":"مفيش حاجة مستنياك. كله خلص."):"مفيش لستات لسه. دوس + فوق واعمل أول لستة."}));
+  var dues=S.tasks.filter(function(t){return !t.done&&t.due}).sort(function(a,b){return a.due-b.due});
+  if(dues.length){
+    var late=dues.filter(function(t){return t.due<Date.now()}).length;
+    var ds=h("section",{style:"--tc:var(--pen)"},h("div",{class:"hl"},h("span",{class:"name",style:"font-size:24px;color:var(--pen)",text:"المواعيد"}),
+      h("span",{text:late?late+" متأخر":dues.length+" جاي"})));
+    var dl=h("ul");
+    dues.slice(0,6).forEach(function(t){
+      var li=row(t),l=S.lists.filter(function(x){return x.id===t.listId})[0];
+      li.setAttribute("style",tc(l));dl.appendChild(li);
+    });
+    ds.appendChild(dl);
+    if(dues.length>6)ds.appendChild(h("span",{class:"more",text:"و "+(dues.length-6)+" ميعاد كمان"}));
+    page.appendChild(ds);
+  }
   S.lists.forEach(function(l){
     var mine=S.tasks.filter(function(t){return t.listId===l.id});
     var todo=mine.filter(function(t){return !t.done}).sort(function(a,b){return (b.createdAt||0)-(a.createdAt||0)});
@@ -487,11 +505,47 @@ function orderSheet(){
       }}}),
       h("button",{type:"button",class:"btn",text:"إلغاء",on:{click:closeSheet}}))),true);
 }
+/* ---------- due times ---------- */
+function toInput(ms){var d=new Date(ms);return new Date(ms-d.getTimezoneOffset()*60000).toISOString().slice(0,16)}
+function dayStart(ms){var d=new Date(ms);d.setHours(0,0,0,0);return d.getTime()}
+function fmtDue(ms){
+  var d=new Date(ms),diff=Math.round((dayStart(ms)-dayStart(Date.now()))/864e5);
+  var time=d.toLocaleTimeString("ar-EG-u-nu-latn",{hour:"numeric",minute:"2-digit"});
+  var day=diff===0?"النهارده":diff===1?"بكرة":diff===-1?"امبارح":
+    d.toLocaleDateString("ar-EG-u-nu-latn",{weekday:"long"})+" "+d.getDate()+"/"+(d.getMonth()+1);
+  return day+" "+time;
+}
+function calUrl(t,ms){
+  function z(x){return new Date(x).toISOString().replace(/[-:]/g,"").slice(0,15)+"Z"}
+  return "https://calendar.google.com/calendar/render?action=TEMPLATE&text="+encodeURIComponent(t.text)+
+    "&dates="+z(ms)+"/"+z(ms+30*60000)+"&details="+encodeURIComponent("من النوتة");
+}
+function askNotify(){try{if(window.Notification&&Notification.permission==="default")Notification.requestPermission()}catch(e){}}
+function checkDue(){
+  var now=Date.now(),seen={},hit=false;
+  try{seen=JSON.parse(LS.get("nota.notified")||"{}")}catch(e){}
+  S.tasks.forEach(function(t){
+    if(t.done||!t.due||t.due>now||now-t.due>5*60000||seen[t.id]===t.due)return;
+    seen[t.id]=t.due;hit=true;
+    sound(false);toast("ميعاد: "+t.text);
+    try{
+      if(window.Notification&&Notification.permission==="granted"){
+        var opt={body:t.text,icon:"icon-192.png",tag:t.id};
+        if(navigator.serviceWorker&&navigator.serviceWorker.controller)navigator.serviceWorker.ready.then(function(r){r.showNotification("ميعاد في النوتة",opt)});
+        else new Notification("ميعاد في النوتة",opt);
+      }
+    }catch(e){}
+  });
+  if(hit){LS.set("nota.notified",JSON.stringify(seen))}
+  if(hit||S.cur===HOME)if(!$("layer").firstChild)render();
+}
+setInterval(checkDue,30000);
 function row(t){
   return h("li",{class:"row"+(t.done?" done":"")+(S.fresh===t.id?" fresh":"")},
     h("button",{class:"chk","aria-pressed":t.done?"true":"false","aria-label":(t.done?"رجّع: ":"خلصت: ")+t.text,
       on:{click:function(){toggle(t)}}},h("span")),
-    h("button",{class:"txt-btn",text:t.text,"aria-label":"عدّل: "+t.text,on:{click:function(){taskSheet(t)}}}));
+    h("button",{class:"txt-btn","aria-label":"عدّل: "+t.text,on:{click:function(){taskSheet(t)}}},t.text,
+      t.due?h("small",{class:"due"+(!t.done&&t.due<Date.now()?" late":""),text:fmtDue(t.due)}):null));
 }
 
 /* ---------- sheets ---------- */
@@ -526,18 +580,29 @@ function taskSheet(t){
   var input=h("input",{id:"taskText",type:"text",value:t.text});
   var sel=h("select",{id:"taskList"});
   S.lists.forEach(function(l){var o=h("option",{value:l.id,text:l.name});if(l.id===t.listId)o.selected=true;sel.appendChild(o)});
+  var when=h("input",{id:"taskDue",type:"datetime-local",class:"ltr",value:t.due?toInput(t.due):""});
+  function dueMs(){var v=when.value?new Date(when.value).getTime():null;return v&&!isNaN(v)?v:null}
   openSheet(h("form",{class:"sheet",on:{submit:function(e){
     e.preventDefault();var v=input.value.trim();if(!v)return;
-    var p={};if(v!==t.text)p.text=v;if(sel.value!==t.listId)p.listId=sel.value;
-    if(p.text||p.listId)patch("tasks",t.id,p);closeSheet();
+    var p={},d=dueMs();
+    if(v!==t.text)p.text=v;if(sel.value!==t.listId)p.listId=sel.value;
+    if(d!==(t.due||null)){p.due=d;if(d)askNotify()}
+    if(Object.keys(p).length)patch("tasks",t.id,p);closeSheet();
   }}},
     h("h3",{text:"تعديل الملاحظة"}),
     h("label",{for:"taskText"},"النص",input),
     h("label",{for:"taskList"},"في لستة",sel),
+    h("label",{for:"taskDue"},"ميعاد (اختياري)",when),
+    h("div",{class:"btns"},
+      h("button",{type:"button",class:"btn",text:"تذكير في تقويم جوجل",style:"color:var(--accent)",on:{click:function(){
+        var d=dueMs();if(!d){toast("حدد الميعاد الأول.");return}
+        window.open(calUrl({text:input.value.trim()||t.text},d),"_blank");
+      }}}),
+      h("button",{type:"button",class:"btn",text:"شيل الميعاد",on:{click:function(){when.value=""}}})),
     h("div",{class:"btns"},
       h("button",{type:"submit",class:"btn main",text:"احفظ"}),
       twoTap("امسح","متأكد؟",function(){del("tasks",[t.id])}),
-      h("button",{type:"button",class:"btn",text:"إلغاء",on:{click:closeSheet}}))));
+      h("button",{type:"button",class:"btn",text:"إلغاء",on:{click:closeSheet}}))),true);
 }
 document.addEventListener("keydown",function(e){if(e.key==="Escape")closeSheet()});
 
@@ -716,6 +781,7 @@ function assistant(text){
     S.tasks.forEach(function(t){byId[t.id]=t});S.lists.forEach(function(l){names[l.id]=l.name});
     var ids=(Array.isArray(o.taskIds)?o.taskIds:[]).filter(function(id,i,a){return byId[id]&&a.indexOf(id)===i});
     var fresh=(Array.isArray(o.newTasks)?o.newTasks:[]).filter(function(n){return n&&n.text&&names[n.listId]});
+    fresh.forEach(function(n){var d=n.due?new Date(n.due).getTime():NaN;n.dueMs=isNaN(d)?null:d});
     reply.textContent=(o.reply||(ids.length?"دول اللي لقيتهم:":"ملقتش حاجة مطابقة."))+(note?"\n"+note:"");
     function picked(){return [].slice.call(body.querySelectorAll("input:checked")).map(function(c){return c.value})}
     ids.forEach(function(id,i){
@@ -740,15 +806,17 @@ function assistant(text){
       }}}));
     }
     if(fresh.length){
-      fresh.forEach(function(n){extra.appendChild(h("label",{style:"border:0"},h("span",null,"+ "+n.text+" ",h("small",{text:"· "+names[n.listId]}))))});
+      fresh.forEach(function(n){extra.appendChild(h("label",{style:"border:0"},h("span",null,"+ "+n.text+" ",h("small",{text:"· "+names[n.listId]+(n.dueMs?" · "+fmtDue(n.dueMs):"")}))))});
       acts.appendChild(h("button",{type:"button",class:"btn main",text:"ضيف "+fresh.length+" ملاحظة",on:{click:function(){
-        fresh.forEach(function(n,i){put("tasks",newId(),{listId:n.listId,text:String(n.text),done:false,createdAt:Date.now()+i,doneAt:null})});closeSheet();
+        fresh.forEach(function(n,i){put("tasks",newId(),{listId:n.listId,text:String(n.text),done:false,createdAt:Date.now()+i,doneAt:null,due:n.dueMs})});
+        if(fresh.some(function(n){return n.dueMs}))askNotify();closeSheet();
       }}}));
     }
   }
   var data=JSON.stringify({lists:S.lists.map(function(l){return {id:l.id,name:l.name}}),
     tasks:S.tasks.map(function(t){return {id:t.id,listId:t.listId,text:t.text,done:!!t.done}})});
-  gemini([{text:"إنت مساعد جوه نوتة مهام شخصية. دي كل اللستات والملاحظات بصيغة JSON:\n"+data+"\n\nطلب صاحب النوتة: «"+text+"»\n\nافهم الطلب ورجّع JSON بس من غير أي كلام تاني بالشكل ده:\n{\"reply\":\"رد قصير بالعامية المصرية يجاوب على الطلب أو يشرح اللي لقيته\",\"taskIds\":[\"id لكل ملاحظة موجودة ليها علاقة بالطلب\"],\"listName\":\"اسم قصير مناسب للستة تجمعهم لو الطلب تجميع، وإلا سيبه فاضي\",\"newTasks\":[{\"listId\":\"id لستة موجودة\",\"text\":\"نص ملاحظة جديدة\"}]}\nقواعد: في taskIds دوّر بالمعنى مش بالحرف، يعني لو طلب مهام شخص أو عميل أو موضوع هات كل اللي يخصه حتى لو الاسم مكتوب بشكل مختلف أو فيه غلطة إملائية. newTasks تتملي بس لو طلب صريح إنه يضيف حاجة، واختار أنسب لستة موجودة. استخدم الـ id زي ما هو بالظبط."}])
+  var nowD=new Date();
+  gemini([{text:"الوقت دلوقتي عند صاحب النوتة: "+toInput(nowD.getTime())+" ("+nowD.toLocaleDateString("ar-EG",{weekday:"long"})+"). لو قال بكرة أو يوم معين أو الساعة كذا احسب الميعاد من الوقت ده، ولو قال فكّرني يبقى طلب إضافة ملاحظة بميعاد، ولو ماحددش ساعة خليها 09:00.\n"+"إنت مساعد جوه نوتة مهام شخصية. دي كل اللستات والملاحظات بصيغة JSON:\n"+data+"\n\nطلب صاحب النوتة: «"+text+"»\n\nافهم الطلب ورجّع JSON بس من غير أي كلام تاني بالشكل ده:\n{\"reply\":\"رد قصير بالعامية المصرية يجاوب على الطلب أو يشرح اللي لقيته\",\"taskIds\":[\"id لكل ملاحظة موجودة ليها علاقة بالطلب\"],\"listName\":\"اسم قصير مناسب للستة تجمعهم لو الطلب تجميع، وإلا سيبه فاضي\",\"newTasks\":[{\"listId\":\"id لستة موجودة\",\"text\":\"نص ملاحظة جديدة\",\"due\":\"YYYY-MM-DDTHH:mm بالتوقيت المحلي لو اتذكر ميعاد، وإلا فاضي\"}]}\nقواعد: في taskIds دوّر بالمعنى مش بالحرف، يعني لو طلب مهام شخص أو عميل أو موضوع هات كل اللي يخصه حتى لو الاسم مكتوب بشكل مختلف أو فيه غلطة إملائية. newTasks تتملي بس لو طلب صريح إنه يضيف حاجة، واختار أنسب لستة موجودة. استخدم الـ id زي ما هو بالظبط."}])
   .then(function(t){
     var o=null;try{o=JSON.parse(t.slice(t.indexOf("{"),t.lastIndexOf("}")+1))}catch(e){}
     if(o)show(o);else show({reply:t.replace(/\*\*/g,""),taskIds:[]});
