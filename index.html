@@ -145,9 +145,18 @@ ul{list-style:none;margin:0;padding:0}
 .out{white-space:pre-wrap;font-size:15px;line-height:1.9;color:var(--ink);background:color-mix(in srgb,var(--accent) 6%,var(--paper));border:1px solid var(--rule);border-radius:12px;padding:12px 14px}
 .pts{display:flex;flex-direction:column;gap:2px}
 .pts label{flex-direction:row;align-items:flex-start;gap:10px;font-size:15px;color:var(--ink);line-height:1.7;padding:6px 0;border-bottom:1px solid var(--rule)}
-.pts input{width:20px;height:20px;flex:0 0 20px;margin-top:4px;accent-color:var(--accent)}
+.pts input[type="checkbox"]{width:20px;height:20px;flex:0 0 20px;margin-top:4px;accent-color:var(--accent);padding:0}
 .btn[disabled]{opacity:.5}
 .mic.busy{opacity:.6}
+.hl{display:flex;justify-content:space-between;align-items:center;height:var(--pitch);margin-top:var(--pitch);padding-inline:calc(var(--gutter) + 12px) 12px}
+.hl .name{font-family:var(--display);font-size:24px;font-weight:700;color:var(--tc);line-height:var(--pitch)}
+.hl span{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.more{display:block;height:var(--pitch);line-height:var(--pitch);padding-inline:calc(var(--gutter) + 12px) 12px;font-size:13px;color:var(--muted);text-align:start;width:100%}
+.ord{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--rule)}
+.ord span{flex:1;font-weight:500;color:var(--tc)}
+.mv{width:40px;height:40px;border:1.5px solid var(--rule);border-radius:10px}
+.mv[disabled]{opacity:.35}
+.pts small{color:var(--muted);font-size:12px}
 </style>
 </head>
 <body>
@@ -183,7 +192,7 @@ ul{list-style:none;margin:0;padding:0}
 (function(){
 "use strict";
 var COLORS=5,FBV="https://www.gstatic.com/firebasejs/12.9.0/";
-var S={lists:[],tasks:[],cur:null,fresh:null};
+var HOME="__home",S={lists:[],tasks:[],cur:HOME,fresh:null};
 var FB=null,cloud=null,migrated=false;
 var $=function(id){return document.getElementById(id)};
 var LS={get:function(k){try{return localStorage.getItem(k)}catch(e){return null}},
@@ -313,10 +322,10 @@ function del(kind,ids){
   if(isCloud()){ids.forEach(function(id){FB.fs.deleteDoc(ref(kind,id)).catch(fail)});return}
   S[kind]=S[kind].filter(function(x){return ids.indexOf(x.id)<0});saveLocal();render();
 }
-function addList(name){var id=newId();S.cur=id;LS.set("nota.cur",id);put("lists",id,{name:name,color:S.lists.length%COLORS,order:Date.now()})}
+function addList(name){var id=newId();S.cur=id;put("lists",id,{name:name,color:S.lists.length%COLORS,order:Date.now()})}
 function deleteList(id){
   var ids=S.tasks.filter(function(t){return t.listId===id}).map(function(t){return t.id});
-  S.cur=null;if(ids.length)del("tasks",ids);del("lists",[id]);
+  S.cur=HOME;if(ids.length)del("tasks",ids);del("lists",[id]);
 }
 function addTask(text,i){put("tasks",newId(),{listId:S.cur,text:text,done:false,createdAt:Date.now()+(i||0),doneAt:null})}
 function toggle(t){
@@ -327,24 +336,25 @@ function clearDone(){del("tasks",S.tasks.filter(function(t){return t.listId===S.
 
 /* ---------- render ---------- */
 function render(){
-  if(!curList()){
-    var saved=LS.get("nota.cur"),hit=S.lists.filter(function(l){return l.id===saved})[0];
-    S.cur=(hit||S.lists[0]||{}).id||null;
-  }
+  S.lists.sort(function(a,b){return (a.order||0)-(b.order||0)});
+  if(S.cur!==HOME&&!curList())S.cur=HOME;
+  var home=S.cur===HOME;
   var tabs=$("tabs");tabs.textContent="";
+  tabs.appendChild(h("button",{class:"tab",role:"tab","aria-selected":home?"true":"false",style:"--tc:var(--accent)",
+    on:{click:function(){S.cur=HOME;S.fresh=null;render()}}},h("span",{text:"الملخص"})));
   S.lists.forEach(function(l){
     var left=S.tasks.filter(function(t){return t.listId===l.id&&!t.done}).length;
     tabs.appendChild(h("button",{class:"tab",role:"tab","aria-selected":l.id===S.cur?"true":"false",style:tc(l),
-      on:{click:function(){S.cur=l.id;S.fresh=null;LS.set("nota.cur",l.id);render()}}},
+      on:{click:function(){S.cur=l.id;S.fresh=null;render()}}},
       h("span",{text:l.name}),h("span",{class:"n",text:String(left)})));
   });
   tabs.appendChild(h("button",{class:"tab add","aria-label":"لستة جديدة",text:"+",on:{click:function(){listSheet(null)}}}));
 
   var page=$("page"),keep=page.scrollTop;page.textContent="";
   var l=curList();
-  $("text").placeholder=l?"اكتب ملاحظة في «"+l.name+"»…":"اعمل لستة الأول…";
-  $("text").disabled=!l;$("send").disabled=!l;
-  if(!l){page.appendChild(h("p",{class:"note",style:"margin-top:var(--pitch)",text:"مفيش لستات لسه. دوس + فوق واعمل أول لستة."}));return}
+  $("text").placeholder=home?"اطلب من النوتة: جمّع مهام…":"اكتب ملاحظة في «"+l.name+"»…";
+  chip();
+  if(home){renderHome(page);page.scrollTop=keep;return}
   page.setAttribute("style",tc(l));
   page.appendChild(h("div",{class:"head"},h("h2",{text:l.name}),
     h("div",{class:"acts"},
@@ -361,6 +371,47 @@ function render(){
     var ul2=h("ul");done.forEach(function(t){ul2.appendChild(row(t))});page.appendChild(ul2);
   }
   page.scrollTop=keep;
+}
+function renderHome(page){
+  page.setAttribute("style","--tc:var(--accent)");
+  var open=S.tasks.filter(function(t){return !t.done}).length;
+  page.appendChild(h("div",{class:"head"},h("h2",{text:"الملخص"}),
+    h("div",{class:"acts"},
+      h("button",{class:"ai",text:"لخّص كل حاجة",on:{click:function(){aiSheet(null)}}}),
+      h("button",{text:"رتّب الصفحات",on:{click:orderSheet}}))));
+  page.appendChild(h("p",{class:"note",text:S.lists.length?(open?"قدامك "+open+" حاجة لسه ماخلصتش.":"مفيش حاجة مستنياك. كله خلص."):"مفيش لستات لسه. دوس + فوق واعمل أول لستة."}));
+  S.lists.forEach(function(l){
+    var mine=S.tasks.filter(function(t){return t.listId===l.id});
+    var todo=mine.filter(function(t){return !t.done}).sort(function(a,b){return (b.createdAt||0)-(a.createdAt||0)});
+    var go=function(){S.cur=l.id;S.fresh=null;render()};
+    var sec=h("section",{style:tc(l)},
+      h("div",{class:"hl"},h("button",{class:"name",text:l.name,on:{click:go}}),
+        h("span",{text:todo.length+" لسه · "+(mine.length-todo.length)+" خلصت"})));
+    var ul=h("ul");todo.slice(0,3).forEach(function(t){ul.appendChild(row(t))});sec.appendChild(ul);
+    if(todo.length>3)sec.appendChild(h("button",{class:"more",text:"و "+(todo.length-3)+" كمان، افتح اللستة",on:{click:go}}));
+    if(!todo.length)sec.appendChild(h("button",{class:"more",text:mine.length?"كله خلص هنا.":"فاضية.",on:{click:go}}));
+    page.appendChild(sec);
+  });
+}
+function orderSheet(){
+  var arr=S.lists.slice(),box=h("div",{class:"pts"});
+  function move(i,d){var a=arr[i];arr[i]=arr[i+d];arr[i+d]=a;draw()}
+  function draw(){
+    box.textContent="";
+    arr.forEach(function(l,i){
+      box.appendChild(h("div",{class:"ord",style:tc(l)},h("span",{text:l.name}),
+        h("button",{type:"button",class:"mv","aria-label":"قدّم "+l.name,disabled:i===0,text:"▲",on:{click:function(){move(i,-1)}}}),
+        h("button",{type:"button",class:"mv","aria-label":"أخّر "+l.name,disabled:i===arr.length-1,text:"▼",on:{click:function(){move(i,1)}}})));
+    });
+  }
+  draw();
+  openSheet(h("div",{class:"sheet"},h("h3",{text:"ترتيب الصفحات"}),
+    h("p",{text:"اللي فوق هنا بيبقى أول تبويب بعد الملخص."}),box,
+    h("div",{class:"btns"},
+      h("button",{type:"button",class:"btn main",text:"احفظ الترتيب",on:{click:function(){
+        arr.forEach(function(l,i){if(l.order!==i+1)patch("lists",l.id,{order:i+1})});closeSheet();
+      }}}),
+      h("button",{type:"button",class:"btn",text:"إلغاء",on:{click:closeSheet}}))),true);
 }
 function row(t){
   return h("li",{class:"row"+(t.done?" done":"")+(S.fresh===t.id?" fresh":"")},
@@ -524,24 +575,26 @@ function gemini(parts){
 function aiErr(e){return e&&e.nokey?"حط مفتاح Gemini من الإعدادات الأول.":(e&&e.msg)||"حصلت مشكلة. جرب تاني."}
 
 function aiSheet(l){
-  var mine=S.tasks.filter(function(t){return t.listId===l.id});
+  var mine=l?S.tasks.filter(function(t){return t.listId===l.id}):S.tasks.slice();
+  var names={};S.lists.forEach(function(x){names[x.id]=x.name});
+  var title=l?l.name:"كل اللستات";
   var out=h("div",{class:"out",hidden:true,"aria-live":"polite"});
   var b1,b2;
   function run(kind){
     if(!mine.length){out.hidden=false;out.textContent="اللستة فاضية، مفيش حاجة تتلخص.";return}
-    var body=mine.map(function(t){return (t.done?"[خلصت] ":"[لسه] ")+t.text}).join("\n");
+    var body=mine.map(function(t){return (l?"":"("+(names[t.listId]||"")+") ")+(t.done?"[خلصت] ":"[لسه] ")+t.text}).join("\n");
     var ask=kind==="sum"
       ?"لخّص لستة الملاحظات دي في كام سطر قصير بالعامية المصرية: إيه أهم اللي فيها، إيه اللي خلص وإيه اللي لسه."
       :"حلّل لستة الملاحظات دي بالعامية المصرية: رتّب اللي لسه ماخلصش حسب الأولوية مع سبب قصير لكل واحدة، جمّع المتشابه، ونبّه لو فيه حاجة ناقصة أو مش واضحة، واقترح أول خطوة أبدأ بيها.";
     b1.disabled=b2.disabled=true;out.hidden=false;out.textContent="بفكر…";
-    gemini([{text:ask+"\nاكتب نص عادي من غير علامات ماركداون أو نجوم.\nاسم اللستة: "+l.name+"\n\n"+body}])
+    gemini([{text:ask+"\nاكتب نص عادي من غير علامات ماركداون أو نجوم.\n"+(l?"اسم اللستة: "+title:"دي كل اللستات، وقبل كل سطر اسم اللستة بين قوسين. اتكلم عن كل لستة لوحدها باختصار.")+"\n\n"+body}])
       .then(function(t){out.textContent=t.replace(/\*\*/g,"")},function(e){out.textContent=aiErr(e)})
       .then(function(){b1.disabled=b2.disabled=false});
   }
-  b1=h("button",{type:"button",class:"btn main",text:"لخّص اللستة",on:{click:function(){run("sum")}}});
+  b1=h("button",{type:"button",class:"btn main",text:l?"لخّص اللستة":"لخّص الكل",on:{click:function(){run("sum")}}});
   b2=h("button",{type:"button",class:"btn main",text:"حلّل ورتّب الأولويات",on:{click:function(){run("ana")}}});
   openSheet(h("div",{class:"sheet"},
-    h("h3",{text:"«"+l.name+"»"}),
+    h("h3",{text:"«"+title+"»"}),
     LS.get("nota.gkey")?null:h("p",{text:"التلخيص محتاج مفتاح Gemini. حطه من الإعدادات (الترس فوق)."}),
     h("div",{class:"btns"},b1,b2),out,
     h("div",{class:"btns"},h("button",{type:"button",class:"btn",text:"قفل",on:{click:closeSheet}}))),true);
@@ -568,12 +621,75 @@ function splitSheet(text){
   },function(e){sum.textContent=aiErr(e)});
 }
 
+/* ---------- smart commands ---------- */
+function norm(s){return String(s).toLowerCase().replace(/[ً-ْـ]/g,"").replace(/[أإآ]/g,"ا").replace(/ى/g,"ي").replace(/ة/g,"ه")}
+function keywordFind(text){
+  var stop=/^(جمع|جمعلي|اجمع|هات|هاتلي|وريني|طلع|طلعلي|كل|مهام|المهام|مهمات|ملاحظات|الملاحظات|بتاعه|بتاعت|بتاع|بتوع|الخاصه|اللي|في|عن|من|لي|ليا|مع|و|عايز|عاوز|شغل|حاجات|الحاجات|تبع|مثلا)$/;
+  var words=norm(text).split(/\s+/).filter(function(w){return w.length>1&&!stop.test(w)});
+  if(!words.length)return [];
+  return S.tasks.filter(function(t){
+    var n=norm(t.text);
+    return words.some(function(w){return n.indexOf(w)>=0||(w.length>4&&w.indexOf("ال")===0&&n.indexOf(w.slice(2))>=0)});
+  }).map(function(t){return t.id});
+}
+function assistant(text){
+  $("text").value="";base="";chip();
+  var reply=h("div",{class:"out",text:"بفهم طلبك…","aria-live":"polite"}),body=h("div",{class:"pts"}),extra=h("div",{class:"pts"}),acts=h("div",{class:"btns"});
+  openSheet(h("div",{class:"sheet"},h("h3",{text:"«"+text+"»"}),reply,body,extra,acts,
+    h("div",{class:"btns"},h("button",{type:"button",class:"btn",text:"قفل",on:{click:closeSheet}}))),true);
+  function show(o,note){
+    var byId={},names={};
+    S.tasks.forEach(function(t){byId[t.id]=t});S.lists.forEach(function(l){names[l.id]=l.name});
+    var ids=(Array.isArray(o.taskIds)?o.taskIds:[]).filter(function(id,i,a){return byId[id]&&a.indexOf(id)===i});
+    var fresh=(Array.isArray(o.newTasks)?o.newTasks:[]).filter(function(n){return n&&n.text&&names[n.listId]});
+    reply.textContent=(o.reply||(ids.length?"دول اللي لقيتهم:":"ملقتش حاجة مطابقة."))+(note?"\n"+note:"");
+    function picked(){return [].slice.call(body.querySelectorAll("input:checked")).map(function(c){return c.value})}
+    ids.forEach(function(id,i){
+      var t=byId[id];
+      body.appendChild(h("label",{for:"as"+i},h("input",{id:"as"+i,type:"checkbox",value:id,checked:true}),
+        h("span",null,t.text+" ",h("small",{text:"· "+(names[t.listId]||"")+(t.done?" · خلصت":"")}))));
+    });
+    if(ids.length){
+      var nm=h("input",{id:"grpName",type:"text",maxlength:"40",value:o.listName||"",placeholder:"مثلاً: مهام العميل"});
+      extra.appendChild(h("label",{for:"grpName",style:"flex-direction:column;border:0;color:var(--muted);font-size:13px;gap:6px"},"اجمعهم في لستة باسم",nm));
+      acts.appendChild(h("button",{type:"button",class:"btn main",text:"اجمعهم في اللستة دي",on:{click:function(){
+        var p=picked(),name=nm.value.trim();
+        if(!p.length||!name){toast("اختار ملاحظات واكتب اسم اللستة.");return}
+        var ex=S.lists.filter(function(l){return norm(l.name)===norm(name)})[0],id=ex?ex.id:newId();
+        if(!ex)put("lists",id,{name:name,color:S.lists.length%COLORS,order:Date.now()});
+        p.forEach(function(tid){if(byId[tid].listId!==id)patch("tasks",tid,{listId:id})});
+        S.cur=id;S.fresh=null;closeSheet();render();
+      }}}));
+      acts.appendChild(h("button",{type:"button",class:"btn",text:"علّم عليهم خلصت",on:{click:function(){
+        var p=picked();if(!p.length)return;sound(true);
+        p.forEach(function(tid){if(!byId[tid].done)patch("tasks",tid,{done:true,doneAt:Date.now()})});closeSheet();
+      }}}));
+    }
+    if(fresh.length){
+      fresh.forEach(function(n){extra.appendChild(h("label",{style:"border:0"},h("span",null,"+ "+n.text+" ",h("small",{text:"· "+names[n.listId]}))))});
+      acts.appendChild(h("button",{type:"button",class:"btn main",text:"ضيف "+fresh.length+" ملاحظة",on:{click:function(){
+        fresh.forEach(function(n,i){put("tasks",newId(),{listId:n.listId,text:String(n.text),done:false,createdAt:Date.now()+i,doneAt:null})});closeSheet();
+      }}}));
+    }
+  }
+  var data=JSON.stringify({lists:S.lists.map(function(l){return {id:l.id,name:l.name}}),
+    tasks:S.tasks.map(function(t){return {id:t.id,listId:t.listId,text:t.text,done:!!t.done}})});
+  gemini([{text:"إنت مساعد جوه نوتة مهام شخصية. دي كل اللستات والملاحظات بصيغة JSON:\n"+data+"\n\nطلب صاحب النوتة: «"+text+"»\n\nافهم الطلب ورجّع JSON بس من غير أي كلام تاني بالشكل ده:\n{\"reply\":\"رد قصير بالعامية المصرية يجاوب على الطلب أو يشرح اللي لقيته\",\"taskIds\":[\"id لكل ملاحظة موجودة ليها علاقة بالطلب\"],\"listName\":\"اسم قصير مناسب للستة تجمعهم لو الطلب تجميع، وإلا سيبه فاضي\",\"newTasks\":[{\"listId\":\"id لستة موجودة\",\"text\":\"نص ملاحظة جديدة\"}]}\nقواعد: في taskIds دوّر بالمعنى مش بالحرف، يعني لو طلب مهام شخص أو عميل أو موضوع هات كل اللي يخصه حتى لو الاسم مكتوب بشكل مختلف أو فيه غلطة إملائية. newTasks تتملي بس لو طلب صريح إنه يضيف حاجة، واختار أنسب لستة موجودة. استخدم الـ id زي ما هو بالظبط."}])
+  .then(function(t){
+    var o=null;try{o=JSON.parse(t.slice(t.indexOf("{"),t.lastIndexOf("}")+1))}catch(e){}
+    if(o)show(o);else show({reply:t.replace(/\*\*/g,""),taskIds:[]});
+  },function(e){
+    var ids=keywordFind(text);
+    show({reply:ids.length?"دول اللي فيهم نفس الكلمة (بحث عادي):":"ملقتش الكلمة دي في أي ملاحظة (بحث عادي).",taskIds:ids},aiErr(e));
+  });
+}
+
 /* ---------- composer + voice ---------- */
 var base="",listening=false,rec=null,session="",mr=null;
 var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 function join(a,b){return a&&b?a+" "+b:(a||b||"")}
 function hint(msg){$("hint").textContent=msg||"";$("hint").hidden=!msg}
-function chip(){$("split").hidden=$("text").value.trim().split(/\s+/).length<7}
+function chip(){$("split").hidden=S.cur===HOME||$("text").value.trim().split(/\s+/).length<7}
 function micState(on){
   listening=on;$("mic").classList.toggle("on",on);
   $("mic").setAttribute("aria-label",on?"وقّف التسجيل":"سجّل صوت");
@@ -582,8 +698,9 @@ function micState(on){
 $("text").addEventListener("input",function(){if(!listening)base=$("text").value.trim();chip()});
 $("form").addEventListener("submit",function(e){
   e.preventDefault();
-  var v=$("text").value.trim();if(!v||!S.cur)return;
+  var v=$("text").value.trim();if(!v)return;
   if(listening)stopVoice();
+  if(S.cur===HOME){assistant(v);return}
   addTask(v);$("text").value="";base="";S.fresh=null;chip();
 });
 $("split").addEventListener("click",function(){
