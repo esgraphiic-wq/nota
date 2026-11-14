@@ -157,6 +157,26 @@ ul{list-style:none;margin:0;padding:0}
 .mv{width:40px;height:40px;border:1.5px solid var(--rule);border-radius:10px}
 .mv[disabled]{opacity:.35}
 .pts small{color:var(--muted);font-size:12px}
+/* phone fit */
+html,body{overflow:hidden;overscroll-behavior:none}
+@supports (height:100dvh){html,body{height:100dvh}}
+.top{align-items:center;gap:8px;padding:10px 14px 6px}
+.top h1{flex:0 0 auto;font-size:30px}
+.top .right{min-width:0;flex:0 1 auto}
+.sync{min-width:0}
+.sync i{flex:0 0 8px}
+.sync span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gear{flex:0 0 36px}
+.head{display:block;height:auto;padding-inline:calc(var(--gutter) + 12px) 12px}
+.head h2{font-size:28px;line-height:calc(var(--pitch)*2);height:calc(var(--pitch)*2)}
+.head .acts{height:var(--pitch);align-items:center;gap:8px}
+.head .acts button{padding:3px 12px;font-size:13px;line-height:20px;white-space:nowrap}
+.hl{gap:8px}
+.hl .name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hl span{flex:0 0 auto;white-space:nowrap}
+.compose input{font-size:16px;text-overflow:ellipsis}
+.tab{font-size:14px;padding-inline:12px}
+@media (max-width:380px){.note{font-size:18px}.txt-btn{font-size:16px}}
 </style>
 </head>
 <body>
@@ -276,11 +296,11 @@ function connect(){
     catch(e){fdb=FB.fs.getFirestore(app)}
     cloud={auth:FB.auth.getAuth(app),db:fdb,user:null,unsub:[]};
     FB.auth.onAuthStateChanged(cloud.auth,onUser);
-  }).catch(function(){cloud=null;setSync("bad","الربط ماشتغلش، شغالة على الجهاز ده")});
+  }).catch(function(){cloud=null;setSync("bad","على الجهاز ده بس")});
 }
 function onUser(u){
   cloud.unsub.forEach(function(f){f()});cloud.unsub=[];cloud.user=u;
-  if(!u){useLocal();setSync("bad","سجّل دخول من الإعدادات");render();return}
+  if(!u){useLocal();setSync("bad","سجّل دخول");render();return}
   setSync("","بيحمّل…");
   var fs=FB.fs,base=["users",u.uid],got={lists:false,tasks:false};
   function listen(kind){
@@ -290,7 +310,7 @@ function onUser(u){
       got[kind]=true;
       if(kind==="lists"&&snap.empty&&!snap.metadata.fromCache&&!migrated){migrated=true;upload()}
       if(got.lists&&got.tasks){
-        if(snap.metadata.fromCache)setSync("","من غير نت، هيتزامن لما يرجع");
+        if(snap.metadata.fromCache)setSync("","من غير نت");
         else setSync("ok",snap.metadata.hasPendingWrites?"بيحفظ…":"متزامن");
         render();
       }
@@ -352,7 +372,7 @@ function render(){
 
   var page=$("page"),keep=page.scrollTop;page.textContent="";
   var l=curList();
-  $("text").placeholder=home?"اطلب من النوتة: جمّع مهام…":"اكتب ملاحظة في «"+l.name+"»…";
+  $("text").placeholder=home?"اطلب: جمّع مهام…":"ملاحظة جديدة…";
   chip();
   if(home){renderHome(page);page.scrollTop=keep;return}
   page.setAttribute("style",tc(l));
