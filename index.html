@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#e3e9f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0d111a" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="النوتة">
+<title>النوتة</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232447c9'/%3E%3Cpath d='M18 33l10 10 18-22' fill='none' stroke='%23fff' stroke-width='7' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=Readex+Pro:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: a ruled school notebook (كشكول) — blue rules, red margin on the right,
+   coloured divider tabs for lists, a pen strike for finished points. One screen, composer pinned at the bottom. */
+:root{
+  --paper:#f6f8fc;
+  --desk:#e3e9f3;
+  --rule:#c7d6ee;
+  --margin:#e0556b;
+  --ink:#1b2a4a;
+  --muted:#6f7c95;
+  --accent:#2447c9;
+  --pen:#d8334f;
+  --on-accent:#ffffff;
+  --t0:#2f5fd0; --t1:#c8415a; --t2:#1f8a61; --t3:#a26a00; --t4:#7350c4;
+  --display:"Aref Ruqaa","Amiri","Traditional Arabic",serif;
+  --body:"Readex Pro","Segoe UI","Tahoma","Noto Sans Arabic",sans-serif;
+  --pitch:36px;
+  --gutter:52px;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#151b28; --desk:#0d111a; --rule:#27344f; --margin:#8f3548;
+    --ink:#e7edf8; --muted:#8d99b0; --accent:#86a2ff; --pen:#ff6f86; --on-accent:#0d1220;
+    --t0:#7f9dff; --t1:#ff8097; --t2:#56c79a; --t3:#e0aa3e; --t4:#b094f5;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#151b28; --desk:#0d111a; --rule:#27344f; --margin:#8f3548;
+  --ink:#e7edf8; --muted:#8d99b0; --accent:#86a2ff; --pen:#ff6f86; --on-accent:#0d1220;
+  --t0:#7f9dff; --t1:#ff8097; --t2:#56c79a; --t3:#e0aa3e; --t4:#b094f5;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--desk);color:var(--ink);font-family:var(--body);font-size:16px;-webkit-tap-highlight-color:transparent}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:0;padding:0}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+
+.app{height:100%;max-width:720px;margin:0 auto;display:flex;flex-direction:column}
+
+/* header */
+.top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:14px 18px 8px}
+.top h1{font-family:var(--display);font-weight:700;font-size:34px;line-height:1;margin:0;text-wrap:balance}
+.sync{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.sync i{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.sync.ok i{background:var(--t2)}
+.sync.bad i{background:var(--pen)}
+
+/* divider tabs */
+.tabs{display:flex;gap:4px;padding:0 16px;overflow-x:auto;scrollbar-width:none;align-items:flex-end}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:8px 14px 7px;border-radius:10px 10px 0 0;
+  background:color-mix(in srgb,var(--tc) 14%,var(--paper));border-top:3px solid var(--tc);font-weight:500;font-size:15px;white-space:nowrap}
+.tab .n{font-size:12px;font-variant-numeric:tabular-nums;min-width:20px;text-align:center;padding:1px 6px;border-radius:9px;
+  background:color-mix(in srgb,var(--tc) 22%,var(--paper))}
+.tab[aria-selected="true"]{background:var(--paper);padding-bottom:11px;font-weight:600}
+.tab.add{border-top-color:var(--muted);background:transparent;color:var(--muted);padding-inline:12px;font-size:20px;line-height:1}
+
+/* the page */
+.page{flex:1;min-height:0;overflow-y:auto;background-color:var(--paper);
+  background-image:
+    linear-gradient(to left,transparent calc(var(--gutter) - 1px),var(--margin) calc(var(--gutter) - 1px),var(--margin) var(--gutter),transparent var(--gutter)),
+    linear-gradient(to bottom,transparent calc(var(--pitch) - 1px),var(--rule) calc(var(--pitch) - 1px));
+  background-size:100% 100%,100% var(--pitch);
+  background-attachment:scroll,local;
+  border-radius:0}
+.head{display:flex;align-items:center;justify-content:space-between;height:calc(var(--pitch)*2);padding-inline:calc(var(--gutter) + 12px) 12px}
+.head h2{font-family:var(--display);font-weight:700;font-size:30px;margin:0;line-height:calc(var(--pitch)*2);color:var(--tc);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.head button{font-size:13px;color:var(--muted);padding:6px 10px;border:1px solid var(--rule);border-radius:16px;background:var(--paper);flex:0 0 auto}
+ul{list-style:none;margin:0;padding:0}
+.row{display:flex;align-items:flex-start;min-height:var(--pitch);padding-inline-end:12px}
+.chk{flex:0 0 var(--gutter);height:var(--pitch);display:grid;place-items:center}
+.chk span{width:22px;height:22px;border-radius:50%;border:2px solid var(--tc);display:grid;place-items:center;background:var(--paper);transition:background .15s}
+.chk span::after{content:"";width:10px;height:5px;border:2px solid var(--on-accent);border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px);opacity:0}
+.done .chk span{background:var(--tc)}
+.done .chk span::after{opacity:1}
+.txt-btn{position:relative;flex:0 1 auto;min-width:0;text-align:start;padding-inline:12px 4px;line-height:var(--pitch);font-size:17px;overflow-wrap:anywhere}
+.done .txt-btn{color:var(--muted);text-decoration:line-through;text-decoration-color:var(--pen);text-decoration-thickness:2px}
+.row.fresh.done .txt-btn{animation:fade .5s both}
+.row.fresh.done .txt-btn::after{content:"";position:absolute;inset-inline:8px 0;top:calc(var(--pitch)/2 + 1px);height:2px;background:var(--pen);
+  transform-origin:right;animation:stroke .5s ease-out both}
+@keyframes stroke{0%{transform:scaleX(0);opacity:1}60%{transform:scaleX(1);opacity:1}100%{transform:scaleX(1);opacity:0}}
+@keyframes fade{0%,55%{color:var(--ink);text-decoration-color:transparent}100%{color:var(--muted);text-decoration-color:var(--pen)}}
+.sep{display:flex;align-items:center;justify-content:space-between;height:var(--pitch);padding-inline:calc(var(--gutter) + 12px) 12px;font-size:13px;color:var(--muted)}
+.sep button{color:var(--pen);font-size:13px;padding:4px 6px}
+.note{padding-inline:calc(var(--gutter) + 12px) 16px;line-height:var(--pitch);font-family:var(--display);font-size:20px;color:var(--muted);margin:0}
+
+/* composer */
+.compose{background:var(--paper);border-top:1px solid var(--rule);padding:10px 12px 12px;display:flex;flex-direction:column;gap:6px}
+.compose form{display:flex;gap:8px;align-items:center}
+.compose input{flex:1;min-width:0;height:46px;border:1.5px solid var(--rule);border-radius:23px;background:var(--paper);padding:0 16px;font-size:16px}
+.compose input:focus{outline:0;border-color:var(--accent)}
+.round{flex:0 0 46px;width:46px;height:46px;border-radius:50%;display:grid;place-items:center}
+.send{background:var(--accent);color:var(--on-accent)}
+.mic{border:1.5px solid var(--accent);color:var(--accent)}
+.mic.on{background:var(--pen);border-color:var(--pen);color:#fff;animation:pulse 1.1s ease-in-out infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 8px color-mix(in srgb,var(--pen) 22%,transparent)}}
+.round svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.hint{font-size:12px;color:var(--muted);margin:0;padding-inline:6px;min-height:0}
+[hidden]{display:none!important}
+
+/* sheet */
+.veil{position:fixed;inset:0;background:rgba(10,15,30,.45);display:flex;align-items:flex-end;justify-content:center;z-index:5}
+.sheet{width:100%;max-width:720px;background:var(--paper);border-radius:18px 18px 0 0;padding:18px 16px 20px;display:flex;flex-direction:column;gap:12px}
+.sheet h3{margin:0;font-family:var(--display);font-size:24px}
+.sheet label{font-size:13px;color:var(--muted);display:flex;flex-direction:column;gap:6px}
+.sheet input,.sheet select{height:46px;border:1.5px solid var(--rule);border-radius:12px;background:var(--paper);padding:0 12px;font-size:16px;width:100%}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.btn{height:44px;padding:0 18px;border-radius:22px;border:1.5px solid var(--rule);font-weight:500}
+.btn.main{background:var(--accent);border-color:var(--accent);color:var(--on-accent);flex:1}
+.btn.danger{color:var(--pen);border-color:color-mix(in srgb,var(--pen) 45%,var(--paper))}
+.toast{position:fixed;inset-inline:16px;bottom:96px;margin:0 auto;max-width:420px;background:var(--ink);color:var(--paper);padding:10px 14px;border-radius:12px;font-size:14px;z-index:9;text-align:center}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+@media (min-width:760px){.app{padding-top:12px}.page{border-inline:1px solid var(--rule)}}
+/* additions for the standalone app */
+.top .right{display:flex;align-items:center;gap:10px}
+.gear{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:var(--muted);border:1px solid var(--rule);background:var(--paper)}
+.gear svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.head .acts{display:flex;gap:6px;flex:0 0 auto}
+.head button.ai{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,var(--paper))}
+.chip{align-self:flex-start;font-size:13px;color:var(--accent);border:1px solid color-mix(in srgb,var(--accent) 45%,var(--paper));border-radius:16px;padding:6px 12px;background:var(--paper)}
+.sheet{max-height:88%;overflow-y:auto}
+.sheet textarea{border:1.5px solid var(--rule);border-radius:12px;background:var(--paper);padding:10px 12px;font:inherit;font-size:14px;color:inherit;width:100%;min-height:110px;direction:ltr;text-align:left;resize:vertical}
+.sheet .ltr{direction:ltr;text-align:left}
+.sheet p{margin:0;font-size:14px;line-height:1.7;color:var(--muted)}
+.sheet h4{margin:6px 0 0;font-size:15px;font-weight:600}
+.sheet hr{border:0;border-top:1px solid var(--rule);margin:4px 0;width:100%}
+.out{white-space:pre-wrap;font-size:15px;line-height:1.9;color:var(--ink);background:color-mix(in srgb,var(--accent) 6%,var(--paper));border:1px solid var(--rule);border-radius:12px;padding:12px 14px}
+.pts{display:flex;flex-direction:column;gap:2px}
+.pts label{flex-direction:row;align-items:flex-start;gap:10px;font-size:15px;color:var(--ink);line-height:1.7;padding:6px 0;border-bottom:1px solid var(--rule)}
+.pts input{width:20px;height:20px;flex:0 0 20px;margin-top:4px;accent-color:var(--accent)}
+.btn[disabled]{opacity:.5}
+.mic.busy{opacity:.6}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <h1>النوتة</h1>
+    <div class="right">
+      <div class="sync" id="sync"><i></i><span id="syncText">على الجهاز ده</span></div>
+      <button class="gear" id="gear" aria-label="الإعدادات">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.8 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.8-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3.1 14H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 3.1V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.8 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.8h.2a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1.1z"/></svg>
+      </button>
+    </div>
+  </header>
+  <nav class="tabs" id="tabs" role="tablist" aria-label="اللستات"></nav>
+  <main class="page" id="page"></main>
+  <div class="compose">
+    <form id="form" autocomplete="off">
+      <button type="button" class="round mic" id="mic" hidden aria-label="سجّل صوت">
+        <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      </button>
+      <input id="text" type="text" placeholder="اكتب ملاحظة…" aria-label="ملاحظة جديدة" enterkeyhint="done">
+      <button type="submit" class="round send" id="send" aria-label="ضيف الملاحظة">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </form>
+    <button type="button" class="chip" id="split" hidden>حوّل الكلام ده لنقط</button>
+    <p class="hint" id="hint" hidden></p>
+  </div>
+</div>
+<div id="layer"></div>
+
+<script>
+(function(){
+"use strict";
+var COLORS=5,FBV="https://www.gstatic.com/firebasejs/12.9.0/";
+var S={lists:[],tasks:[],cur:null,fresh:null};
+var FB=null,cloud=null,migrated=false;
+var $=function(id){return document.getElementById(id)};
+var LS={get:function(k){try{return localStorage.getItem(k)}catch(e){return null}},
+        set:function(k,v){try{if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v)}catch(e){}}};
+
+function h(tag,props){
+  var e=document.createElement(tag),i,k;
+  if(props)for(k in props){
+    if(k==="text")e.textContent=props[k];
+    else if(k==="on")for(i in props.on)e.addEventListener(i,props.on[i]);
+    else if(k==="style")e.setAttribute("style",props[k]);
+    else if(props[k]!==null&&props[k]!==undefined&&props[k]!==false)e.setAttribute(k,props[k]===true?"":props[k]);
+  }
+  for(i=2;i<arguments.length;i++){var c=arguments[i];if(c)e.appendChild(typeof c==="string"?document.createTextNode(c):c)}
+  return e;
+}
+function tc(l){return "--tc:var(--t"+((l&&l.color)||0)%COLORS+")"}
+function curList(){for(var i=0;i<S.lists.length;i++)if(S.lists[i].id===S.cur)return S.lists[i];return null}
+function newId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
+function isCloud(){return !!(cloud&&cloud.user)}
+function setSync(kind,text){$("sync").className="sync "+kind;$("syncText").textContent=text}
+
+/* ---------- sound ---------- */
+var ac=null;
+function sound(done){
+  try{
+    ac=ac||new (window.AudioContext||window.webkitAudioContext)();
+    if(ac.state==="suspended")ac.resume();
+    var t=ac.currentTime;
+    if(done){
+      var len=Math.floor(ac.sampleRate*0.14),buf=ac.createBuffer(1,len,ac.sampleRate),ch=buf.getChannelData(0);
+      for(var i=0;i<len;i++)ch[i]=(Math.random()*2-1)*(1-i/len);
+      var src=ac.createBufferSource(),bp=ac.createBiquadFilter(),ng=ac.createGain();
+      src.buffer=buf;bp.type="bandpass";bp.frequency.value=3200;bp.Q.value=0.8;ng.gain.value=0.12;
+      src.connect(bp);bp.connect(ng);ng.connect(ac.destination);src.start(t);
+    }
+    (done?[784,1175]:[392]).forEach(function(f,i){
+      var o=ac.createOscillator(),g=ac.createGain(),s=t+(done?0.1:0)+i*0.08;
+      o.type="sine";o.frequency.value=f;
+      g.gain.setValueAtTime(0.0001,s);g.gain.linearRampToValueAtTime(0.16,s+0.012);g.gain.exponentialRampToValueAtTime(0.0001,s+0.4);
+      o.connect(g);g.connect(ac.destination);o.start(s);o.stop(s+0.45);
+    });
+  }catch(e){}
+}
+
+/* ---------- toast ---------- */
+var toastT=null;
+function toast(msg){
+  var old=document.querySelector(".toast");if(old)old.remove();
+  document.body.appendChild(h("div",{class:"toast",role:"status",text:msg}));
+  clearTimeout(toastT);toastT=setTimeout(function(){var t=document.querySelector(".toast");if(t)t.remove()},4000);
+}
+function fail(e){
+  toast(e&&e.code==="permission-denied"?"Firebase رفض الحفظ. راجع قواعد Firestore من الإعدادات.":"ماتحفظش. شوف النت وجرب تاني.");
+}
+
+/* ---------- storage: this device ---------- */
+function readLocal(){
+  try{var d=JSON.parse(LS.get("nota.data")||"null");if(d&&d.lists&&d.tasks)return d}catch(e){}
+  return {lists:[{id:"shop",name:"المحل",color:0,order:1},{id:"wishes",name:"الأمنيات",color:1,order:2},{id:"abu-fahd",name:"شغل أبو فهد",color:2,order:3}],tasks:[]};
+}
+function useLocal(){var d=readLocal();S.lists=d.lists;S.tasks=d.tasks}
+function saveLocal(){LS.set("nota.data",JSON.stringify({lists:S.lists,tasks:S.tasks}))}
+
+/* ---------- storage: Firebase ---------- */
+var DEFAULT_CFG={apiKey:"AIzaSyCKuWX_cu78l_e3h85Av6Jn0CukDF98kHE",authDomain:"nota-islam.firebaseapp.com",projectId:"nota-islam",storageBucket:"nota-islam.firebasestorage.app",messagingSenderId:"782390960025",appId:"1:782390960025:web:198c2a8c843aff3f62fd08"};
+function getCfg(){try{var c=JSON.parse(LS.get("nota.fb")||"null");return c&&c.apiKey&&c.projectId?c:DEFAULT_CFG}catch(e){return DEFAULT_CFG}}
+function parseCfg(txt){
+  var c={},re=/["']?(\w+)["']?\s*:\s*["']([^"']+)["']/g,m;
+  while((m=re.exec(txt)))c[m[1]]=m[2];
+  return c.apiKey&&c.projectId?c:null;
+}
+function ref(kind,id){return FB.fs.doc(cloud.db,"users",cloud.user.uid,kind,id)}
+function connect(){
+  var cfg=getCfg();if(!cfg)return;
+  setSync("","بيتصل…");
+  Promise.all([import(FBV+"firebase-app.js"),import(FBV+"firebase-auth.js"),import(FBV+"firebase-firestore.js")]).then(function(m){
+    FB={app:m[0],auth:m[1],fs:m[2]};
+    var app=FB.app.initializeApp(cfg),fdb;
+    try{fdb=FB.fs.initializeFirestore(app,{localCache:FB.fs.persistentLocalCache({tabManager:FB.fs.persistentMultipleTabManager()})})}
+    catch(e){fdb=FB.fs.getFirestore(app)}
+    cloud={auth:FB.auth.getAuth(app),db:fdb,user:null,unsub:[]};
+    FB.auth.onAuthStateChanged(cloud.auth,onUser);
+  }).catch(function(){cloud=null;setSync("bad","الربط ماشتغلش، شغالة على الجهاز ده")});
+}
+function onUser(u){
+  cloud.unsub.forEach(function(f){f()});cloud.unsub=[];cloud.user=u;
+  if(!u){useLocal();setSync("bad","سجّل دخول من الإعدادات");render();return}
+  setSync("","بيحمّل…");
+  var fs=FB.fs,base=["users",u.uid],got={lists:false,tasks:false};
+  function listen(kind){
+    cloud.unsub.push(fs.onSnapshot(fs.collection(cloud.db,base[0],base[1],kind),{includeMetadataChanges:true},function(snap){
+      S[kind]=snap.docs.map(function(d){var o=d.data();o.id=d.id;return o});
+      if(kind==="lists")S.lists.sort(function(a,b){return (a.order||0)-(b.order||0)});
+      got[kind]=true;
+      if(kind==="lists"&&snap.empty&&!snap.metadata.fromCache&&!migrated){migrated=true;upload()}
+      if(got.lists&&got.tasks){
+        if(snap.metadata.fromCache)setSync("","من غير نت، هيتزامن لما يرجع");
+        else setSync("ok",snap.metadata.hasPendingWrites?"بيحفظ…":"متزامن");
+        render();
+      }
+    },function(e){setSync("bad",e&&e.code==="permission-denied"?"راجع قواعد Firestore":"الاتصال اتقطع")}));
+  }
+  listen("lists");listen("tasks");
+  cloud.unsub.push(fs.onSnapshot(fs.doc(cloud.db,base[0],base[1],"meta","settings"),function(d){
+    var k=d.exists()&&d.data().geminiKey;
+    if(k&&k!==LS.get("nota.gkey")){LS.set("nota.gkey",k);LS.set("nota.gmodel",null)}
+    else if(!k&&LS.get("nota.gkey"))fs.setDoc(d.ref,{geminiKey:LS.get("nota.gkey")},{merge:true}).catch(function(){});
+  },function(){}));
+}
+function upload(){
+  var d=readLocal();
+  d.lists.forEach(function(l){var o=Object.assign({},l);delete o.id;FB.fs.setDoc(ref("lists",l.id),o).catch(fail)});
+  d.tasks.forEach(function(t){var o=Object.assign({},t);delete o.id;FB.fs.setDoc(ref("tasks",t.id),o).catch(fail)});
+}
+
+/* ---------- data actions ---------- */
+function put(kind,id,data){
+  if(isCloud()){FB.fs.setDoc(ref(kind,id),data).catch(fail);return}
+  var o=Object.assign({id:id},data);S[kind].push(o);saveLocal();render();
+}
+function patch(kind,id,p){
+  if(isCloud()){FB.fs.updateDoc(ref(kind,id),p).catch(fail);return}
+  S[kind].forEach(function(x){if(x.id===id)Object.assign(x,p)});saveLocal();render();
+}
+function del(kind,ids){
+  if(isCloud()){ids.forEach(function(id){FB.fs.deleteDoc(ref(kind,id)).catch(fail)});return}
+  S[kind]=S[kind].filter(function(x){return ids.indexOf(x.id)<0});saveLocal();render();
+}
+function addList(name){var id=newId();S.cur=id;LS.set("nota.cur",id);put("lists",id,{name:name,color:S.lists.length%COLORS,order:Date.now()})}
+function deleteList(id){
+  var ids=S.tasks.filter(function(t){return t.listId===id}).map(function(t){return t.id});
+  S.cur=null;if(ids.length)del("tasks",ids);del("lists",[id]);
+}
+function addTask(text,i){put("tasks",newId(),{listId:S.cur,text:text,done:false,createdAt:Date.now()+(i||0),doneAt:null})}
+function toggle(t){
+  var nowDone=!t.done;sound(nowDone);S.fresh=nowDone?t.id:null;
+  patch("tasks",t.id,{done:nowDone,doneAt:nowDone?Date.now():null});
+}
+function clearDone(){del("tasks",S.tasks.filter(function(t){return t.listId===S.cur&&t.done}).map(function(t){return t.id}))}
+
+/* ---------- render ---------- */
+function render(){
+  if(!curList()){
+    var saved=LS.get("nota.cur"),hit=S.lists.filter(function(l){return l.id===saved})[0];
+    S.cur=(hit||S.lists[0]||{}).id||null;
+  }
+  var tabs=$("tabs");tabs.textContent="";
+  S.lists.forEach(function(l){
+    var left=S.tasks.filter(function(t){return t.listId===l.id&&!t.done}).length;
+    tabs.appendChild(h("button",{class:"tab",role:"tab","aria-selected":l.id===S.cur?"true":"false",style:tc(l),
+      on:{click:function(){S.cur=l.id;S.fresh=null;LS.set("nota.cur",l.id);render()}}},
+      h("span",{text:l.name}),h("span",{class:"n",text:String(left)})));
+  });
+  tabs.appendChild(h("button",{class:"tab add","aria-label":"لستة جديدة",text:"+",on:{click:function(){listSheet(null)}}}));
+
+  var page=$("page"),keep=page.scrollTop;page.textContent="";
+  var l=curList();
+  $("text").placeholder=l?"اكتب ملاحظة في «"+l.name+"»…":"اعمل لستة الأول…";
+  $("text").disabled=!l;$("send").disabled=!l;
+  if(!l){page.appendChild(h("p",{class:"note",style:"margin-top:var(--pitch)",text:"مفيش لستات لسه. دوس + فوق واعمل أول لستة."}));return}
+  page.setAttribute("style",tc(l));
+  page.appendChild(h("div",{class:"head"},h("h2",{text:l.name}),
+    h("div",{class:"acts"},
+      h("button",{class:"ai",text:"لخّص وحلّل",on:{click:function(){aiSheet(l)}}}),
+      h("button",{text:"تعديل",on:{click:function(){listSheet(l)}}}))));
+  var mine=S.tasks.filter(function(t){return t.listId===l.id});
+  var open=mine.filter(function(t){return !t.done}).sort(function(a,b){return (b.createdAt||0)-(a.createdAt||0)});
+  var done=mine.filter(function(t){return t.done}).sort(function(a,b){return (b.doneAt||0)-(a.doneAt||0)});
+  if(!mine.length)page.appendChild(h("p",{class:"note",text:"الصفحة فاضية. اكتب أول ملاحظة تحت أو سجّلها بصوتك."}));
+  var ul=h("ul");open.forEach(function(t){ul.appendChild(row(t))});page.appendChild(ul);
+  if(done.length){
+    page.appendChild(h("div",{class:"sep"},h("span",{text:"خلصت ("+done.length+")"}),
+      h("button",{text:"امسح اللي خلص",on:{click:clearDone}})));
+    var ul2=h("ul");done.forEach(function(t){ul2.appendChild(row(t))});page.appendChild(ul2);
+  }
+  page.scrollTop=keep;
+}
+function row(t){
+  return h("li",{class:"row"+(t.done?" done":"")+(S.fresh===t.id?" fresh":"")},
+    h("button",{class:"chk","aria-pressed":t.done?"true":"false","aria-label":(t.done?"رجّع: ":"خلصت: ")+t.text,
+      on:{click:function(){toggle(t)}}},h("span")),
+    h("button",{class:"txt-btn",text:t.text,"aria-label":"عدّل: "+t.text,on:{click:function(){taskSheet(t)}}}));
+}
+
+/* ---------- sheets ---------- */
+function closeSheet(){$("layer").textContent=""}
+function openSheet(node,noFocus){
+  var veil=h("div",{class:"veil",on:{click:function(e){if(e.target===veil)closeSheet()}}},node);
+  $("layer").textContent="";$("layer").appendChild(veil);
+  var f=!noFocus&&node.querySelector("input,textarea");if(f)f.focus();
+}
+function twoTap(label,sure,fn){
+  var armed=false;
+  var b=h("button",{type:"button",class:"btn danger",text:label,on:{click:function(){
+    if(!armed){armed=true;b.textContent=sure;return}
+    fn();closeSheet();
+  }}});
+  return b;
+}
+function listSheet(l){
+  var input=h("input",{id:"listName",type:"text",maxlength:"40",value:l?l.name:"",placeholder:"مثلاً: مشتريات البيت"});
+  openSheet(h("form",{class:"sheet",on:{submit:function(e){
+    e.preventDefault();var v=input.value.trim();if(!v)return;
+    if(l)patch("lists",l.id,{name:v});else addList(v);closeSheet();
+  }}},
+    h("h3",{text:l?"تعديل اللستة":"لستة جديدة"}),
+    h("label",{for:"listName"},"اسم اللستة",input),
+    h("div",{class:"btns"},
+      h("button",{type:"submit",class:"btn main",text:l?"احفظ الاسم":"اعمل اللستة"}),
+      l?twoTap("امسح اللستة","متأكد؟ هتتمسح بكل اللي فيها",function(){deleteList(l.id)}):null,
+      h("button",{type:"button",class:"btn",text:"إلغاء",on:{click:closeSheet}}))));
+}
+function taskSheet(t){
+  var input=h("input",{id:"taskText",type:"text",value:t.text});
+  var sel=h("select",{id:"taskList"});
+  S.lists.forEach(function(l){var o=h("option",{value:l.id,text:l.name});if(l.id===t.listId)o.selected=true;sel.appendChild(o)});
+  openSheet(h("form",{class:"sheet",on:{submit:function(e){
+    e.preventDefault();var v=input.value.trim();if(!v)return;
+    var p={};if(v!==t.text)p.text=v;if(sel.value!==t.listId)p.listId=sel.value;
+    if(p.text||p.listId)patch("tasks",t.id,p);closeSheet();
+  }}},
+    h("h3",{text:"تعديل الملاحظة"}),
+    h("label",{for:"taskText"},"النص",input),
+    h("label",{for:"taskList"},"في لستة",sel),
+    h("div",{class:"btns"},
+      h("button",{type:"submit",class:"btn main",text:"احفظ"}),
+      twoTap("امسح","متأكد؟",function(){del("tasks",[t.id])}),
+      h("button",{type:"button",class:"btn",text:"إلغاء",on:{click:closeSheet}}))));
+}
+document.addEventListener("keydown",function(e){if(e.key==="Escape")closeSheet()});
+
+/* ---------- settings ---------- */
+var RULES="rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /users/{uid}/{document=**} {\n      allow read, write: if request.auth != null && request.auth.uid == uid;\n    }\n  }\n}";
+function authMsg(e){
+  var c=(e&&e.code)||"";
+  if(/invalid-credential|wrong-password|user-not-found|invalid-email/.test(c))return "الإيميل أو الباسورد غلط.";
+  if(/email-already-in-use/.test(c))return "الإيميل ده متسجل قبل كده. دوس دخول.";
+  if(/weak-password/.test(c))return "الباسورد لازم 6 حروف على الأقل.";
+  if(/operation-not-allowed/.test(c))return "فعّل Email/Password من Authentication في Firebase.";
+  if(/network/.test(c))return "مفيش نت.";
+  return "ماشتغلش: "+c;
+}
+function settingsSheet(){
+  var cfg=getCfg(),box=h("div",{class:"sheet"}),kids=[h("h3",{text:"الإعدادات"}),h("h4",{text:"الربط بين الموبايل والكمبيوتر"})];
+  if(!cfg){
+    var ta=h("textarea",{id:"fbCfg",placeholder:"const firebaseConfig = {\n  apiKey: \"...\",\n  projectId: \"...\"\n};"});
+    kids.push(h("p",{text:"النوتة دلوقتي بتحفظ على الجهاز ده بس. عشان تتربط، الصق هنا كود firebaseConfig من مشروعك في Firebase."}),
+      h("label",{for:"fbCfg"},"كود firebaseConfig",ta),
+      h("div",{class:"btns"},h("button",{type:"button",class:"btn main",text:"احفظ واربط",on:{click:function(){
+        var c=parseCfg(ta.value);if(!c){toast("الكود ناقص. لازم يكون فيه apiKey و projectId.");return}
+        LS.set("nota.fb",JSON.stringify(c));location.reload();
+      }}})));
+  }else if(!isCloud()){
+    var em=h("input",{id:"em",type:"email",class:"ltr",autocomplete:"email",placeholder:"you@example.com"});
+    var pw=h("input",{id:"pw",type:"password",class:"ltr",autocomplete:"current-password"});
+    var go=function(make){return function(){
+      if(!cloud){toast("الربط لسه بيحمّل أو ماشتغلش. اقفل وافتح تاني.");return}
+      var f=make?FB.auth.createUserWithEmailAndPassword:FB.auth.signInWithEmailAndPassword;
+      f(cloud.auth,em.value.trim(),pw.value).then(closeSheet,function(e){toast(authMsg(e))});
+    }};
+    kids.push(h("p",{text:"المشروع: "+cfg.projectId+". ادخل بنفس الإيميل والباسورد على كل جهاز."}),
+      h("label",{for:"em"},"الإيميل",em),h("label",{for:"pw"},"الباسورد",pw),
+      h("div",{class:"btns"},
+        h("button",{type:"button",class:"btn main",text:"دخول",on:{click:go(false)}}),
+        h("button",{type:"button",class:"btn",text:"حساب جديد",on:{click:go(true)}})));
+  }else{
+    var link=location.href.split("#")[0];
+    var li=h("input",{id:"lnk",type:"text",class:"ltr",readonly:true,value:link,on:{focus:function(){li.select()}}});
+    kids.push(h("p",{text:"داخل بـ "+(cloud.user.email||"")+". عشان تربط جهاز تاني: افتح الرابط ده عليه وادخل بنفس الإيميل والباسورد."}),
+      h("label",{for:"lnk"},"رابط النوتة",li),
+      location.protocol==="file:"?h("p",{text:"الرابط ده مش هيفتح على الموبايل طول ما النوتة ملف على الكمبيوتر. ارفعها على استضافة الأول."}):null,
+      h("div",{class:"btns"},
+        h("button",{type:"button",class:"btn main",text:"انسخ الرابط",on:{click:function(){
+          li.select();
+          (navigator.clipboard?navigator.clipboard.writeText(link):Promise.reject()).then(function(){toast("اتنسخ")},function(){toast("حدد الرابط وانسخه بإيدك")});
+        }}}),
+        h("button",{type:"button",class:"btn",text:"خروج",on:{click:function(){FB.auth.signOut(cloud.auth);closeSheet()}}})));
+  }
+  var gk=h("input",{id:"gk",type:"password",class:"ltr",autocomplete:"off",value:LS.get("nota.gkey")||"",placeholder:"AIza..."});
+  kids.push(h("hr"),h("h4",{text:"التلخيص والتحليل (Gemini)"}),
+    h("p",{text:"هات مفتاح مجاني من Google AI Studio وحطه هنا مرة واحدة. لو النوتة مربوطة، المفتاح بيوصل لباقي أجهزتك لوحده."}),
+    h("label",{for:"gk"},"مفتاح Gemini API",gk),
+    h("div",{class:"btns"},
+      h("button",{type:"button",class:"btn main",text:"احفظ المفتاح",on:{click:function(){
+        var v=gk.value.trim();LS.set("nota.gkey",v||null);LS.set("nota.gmodel",null);
+        if(isCloud())FB.fs.setDoc(ref("meta","settings"),{geminiKey:v},{merge:true}).catch(fail);
+        toast(v?"المفتاح اتحفظ":"المفتاح اتمسح");
+      }}}),
+      h("button",{type:"button",class:"btn",text:"قفل",on:{click:closeSheet}})));
+  kids.forEach(function(k){if(k)box.appendChild(k)});
+  openSheet(box,true);
+}
+$("gear").addEventListener("click",settingsSheet);
+
+/* ---------- Gemini ---------- */
+var GAPI="https://generativelanguage.googleapis.com/v1beta/models";
+function ver(n){var m=/gemini-(\d+(?:\.\d+)?)/.exec(n);return m?parseFloat(m[1]):0}
+function models(key){
+  var saved=LS.get("nota.gmodel");
+  var fallback=["gemini-3.8-flash","gemini-3.5-flash-lite","gemini-2.5-flash","gemini-2.5-flash-lite"];
+  return fetch(GAPI+"?pageSize=200",{headers:{"x-goog-api-key":key}}).then(function(r){return r.ok?r.json():{models:[]}},function(){return {models:[]}}).then(function(j){
+    var list=(j.models||[]).filter(function(m){
+      return (m.supportedGenerationMethods||[]).indexOf("generateContent")>=0&&/flash/.test(m.name)&&!/tts|image|live|audio|embed|preview|exp/.test(m.name);
+    }).map(function(m){return m.name.replace("models/","")})
+      .sort(function(a,b){return ver(b)-ver(a)||(/lite/.test(a)?1:0)-(/lite/.test(b)?1:0)}).slice(0,5);
+    if(!list.length)list=fallback;
+    if(saved){list=list.filter(function(m){return m!==saved});list.unshift(saved)}
+    return list;
+  });
+}
+function gemini(parts){
+  var key=LS.get("nota.gkey");
+  if(!key)return Promise.reject({nokey:true});
+  return models(key).then(function(list){
+    var i=0,last="";
+    function next(){
+      if(i>=list.length)return Promise.reject({msg:last||"Gemini مردش."});
+      var m=list[i++];
+      return fetch(GAPI+"/"+m+":generateContent",{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":key},
+        body:JSON.stringify({contents:[{role:"user",parts:parts}]})}).then(function(r){
+        return r.json().catch(function(){return {}}).then(function(j){
+          if(r.ok){
+            var c=j.candidates&&j.candidates[0],t=c&&c.content&&c.content.parts?c.content.parts.map(function(p){return p.text||""}).join(""):"";
+            if(!t){last="Gemini رجّع رد فاضي.";return next()}
+            LS.set("nota.gmodel",m);return t.trim();
+          }
+          var em=(j.error&&j.error.message)||"";
+          if(/API key/i.test(em)||r.status===401||r.status===403)return Promise.reject({msg:"مفتاح Gemini مش مظبوط. راجعه من الإعدادات."});
+          last=r.status===429?"حد الاستخدام المجاني خلص دلوقتي. جرب بعد شوية.":"Gemini رفض الطلب ("+r.status+").";
+          return next();
+        });
+      },function(){return Promise.reject({msg:"مفيش نت."})});
+    }
+    return next();
+  });
+}
+function aiErr(e){return e&&e.nokey?"حط مفتاح Gemini من الإعدادات الأول.":(e&&e.msg)||"حصلت مشكلة. جرب تاني."}
+
+function aiSheet(l){
+  var mine=S.tasks.filter(function(t){return t.listId===l.id});
+  var out=h("div",{class:"out",hidden:true,"aria-live":"polite"});
+  var b1,b2;
+  function run(kind){
+    if(!mine.length){out.hidden=false;out.textContent="اللستة فاضية، مفيش حاجة تتلخص.";return}
+    var body=mine.map(function(t){return (t.done?"[خلصت] ":"[لسه] ")+t.text}).join("\n");
+    var ask=kind==="sum"
+      ?"لخّص لستة الملاحظات دي في كام سطر قصير بالعامية المصرية: إيه أهم اللي فيها، إيه اللي خلص وإيه اللي لسه."
+      :"حلّل لستة الملاحظات دي بالعامية المصرية: رتّب اللي لسه ماخلصش حسب الأولوية مع سبب قصير لكل واحدة، جمّع المتشابه، ونبّه لو فيه حاجة ناقصة أو مش واضحة، واقترح أول خطوة أبدأ بيها.";
+    b1.disabled=b2.disabled=true;out.hidden=false;out.textContent="بفكر…";
+    gemini([{text:ask+"\nاكتب نص عادي من غير علامات ماركداون أو نجوم.\nاسم اللستة: "+l.name+"\n\n"+body}])
+      .then(function(t){out.textContent=t.replace(/\*\*/g,"")},function(e){out.textContent=aiErr(e)})
+      .then(function(){b1.disabled=b2.disabled=false});
+  }
+  b1=h("button",{type:"button",class:"btn main",text:"لخّص اللستة",on:{click:function(){run("sum")}}});
+  b2=h("button",{type:"button",class:"btn main",text:"حلّل ورتّب الأولويات",on:{click:function(){run("ana")}}});
+  openSheet(h("div",{class:"sheet"},
+    h("h3",{text:"«"+l.name+"»"}),
+    LS.get("nota.gkey")?null:h("p",{text:"التلخيص محتاج مفتاح Gemini. حطه من الإعدادات (الترس فوق)."}),
+    h("div",{class:"btns"},b1,b2),out,
+    h("div",{class:"btns"},h("button",{type:"button",class:"btn",text:"قفل",on:{click:closeSheet}}))),true);
+}
+function splitSheet(text){
+  var body=h("div",{class:"pts"}),sum=h("div",{class:"out",text:"بحوّل الكلام لنقط…","aria-live":"polite"});
+  var add=h("button",{type:"button",class:"btn main",text:"ضيف المتعلّم عليهم",disabled:true,on:{click:function(){
+    var picks=[].slice.call(body.querySelectorAll("input:checked")).map(function(c){return c.value});
+    picks.reverse().forEach(function(p,i){addTask(p,i)});
+    $("text").value="";base="";chip();closeSheet();
+  }}});
+  openSheet(h("div",{class:"sheet"},h("h3",{text:"الكلام بعد التلخيص"}),sum,body,
+    h("div",{class:"btns"},add,h("button",{type:"button",class:"btn",text:"إلغاء",on:{click:closeSheet}}))),true);
+  gemini([{text:"الكلام ده ملاحظة اتقالت بالصوت أو اتكتبت بسرعة. طلّع منها: summary ملخص من سطر واحد بالعامية المصرية، و points قايمة بالمهام أو الأفكار المنفصلة اللي فيها، كل واحدة جملة قصيرة واضحة بنفس لغة صاحبها ومن غير تكرار. رجّع JSON بس بالشكل ده من غير أي كلام تاني: {\"summary\":\"...\",\"points\":[\"...\"]}\n\nالكلام:\n"+text}])
+  .then(function(t){
+    var o=null;try{o=JSON.parse(t.slice(t.indexOf("{"),t.lastIndexOf("}")+1))}catch(e){}
+    var pts=o&&Array.isArray(o.points)?o.points:t.split("\n");
+    pts=pts.map(function(p){return String(p).replace(/^[\s\-*•\d.)]+/,"").trim()}).filter(Boolean);
+    sum.textContent=(o&&o.summary)||"النقط اللي طلعت من كلامك:";
+    pts.forEach(function(p,i){
+      body.appendChild(h("label",{for:"pt"+i},h("input",{id:"pt"+i,type:"checkbox",value:p,checked:true}),h("span",{text:p})));
+    });
+    add.disabled=!pts.length;
+  },function(e){sum.textContent=aiErr(e)});
+}
+
+/* ---------- composer + voice ---------- */
+var base="",listening=false,rec=null,session="",mr=null;
+var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+function join(a,b){return a&&b?a+" "+b:(a||b||"")}
+function hint(msg){$("hint").textContent=msg||"";$("hint").hidden=!msg}
+function chip(){$("split").hidden=$("text").value.trim().split(/\s+/).length<7}
+function micState(on){
+  listening=on;$("mic").classList.toggle("on",on);
+  $("mic").setAttribute("aria-label",on?"وقّف التسجيل":"سجّل صوت");
+  hint(on?"بسمعك… اتكلم ودوس على الميكروفون لما تخلص.":"");chip();
+}
+$("text").addEventListener("input",function(){if(!listening)base=$("text").value.trim();chip()});
+$("form").addEventListener("submit",function(e){
+  e.preventDefault();
+  var v=$("text").value.trim();if(!v||!S.cur)return;
+  if(listening)stopVoice();
+  addTask(v);$("text").value="";base="";S.fresh=null;chip();
+});
+$("split").addEventListener("click",function(){
+  if(listening)stopVoice();
+  var v=$("text").value.trim();if(v)splitSheet(v);
+});
+function startSR(){
+  rec=new SR();rec.lang="ar-EG";rec.continuous=false;rec.interimResults=true;session="";
+  rec.onresult=function(ev){
+    var s="";for(var i=0;i<ev.results.length;i++)s+=ev.results[i][0].transcript;
+    session=s.trim();$("text").value=join(base,session);
+  };
+  rec.onerror=function(ev){
+    if(ev.error==="not-allowed"||ev.error==="service-not-allowed"){listening=false;toast("المتصفح مانع الميكروفون. اسمح له من إعدادات الموقع.")}
+    else if(ev.error==="network"){listening=false;toast("التسجيل محتاج نت.")}
+  };
+  rec.onend=function(){
+    base=join(base,session);session="";$("text").value=base;
+    if(listening){try{startSR()}catch(e){micState(false)}}else micState(false);
+  };
+  rec.start();
+}
+function startRec(){
+  navigator.mediaDevices.getUserMedia({audio:true}).then(function(stream){
+    var chunks=[];mr=new MediaRecorder(stream);
+    mr.ondataavailable=function(e){if(e.data.size)chunks.push(e.data)};
+    mr.onstop=function(){
+      stream.getTracks().forEach(function(t){t.stop()});micState(false);
+      var blob=new Blob(chunks,{type:mr.mimeType||"audio/webm"}),fr=new FileReader();
+      $("mic").classList.add("busy");hint("بحوّل الصوت لكلام…");
+      fr.onload=function(){
+        gemini([{text:"اكتب الكلام اللي في التسجيل ده بالحرف زي ما اتقال، من غير أي إضافة أو شرح."},
+                {inlineData:{mimeType:blob.type.split(";")[0],data:String(fr.result).split(",")[1]}}])
+          .then(function(t){base=join(base,t);$("text").value=base},function(e){toast(aiErr(e))})
+          .then(function(){$("mic").classList.remove("busy");hint("");chip()});
+      };
+      fr.readAsDataURL(blob);
+    };
+    mr.start();micState(true);
+  },function(){toast("المتصفح مانع الميكروفون. اسمح له من إعدادات الموقع.")});
+}
+function stopVoice(){
+  listening=false;
+  if(rec){try{rec.stop()}catch(e){}}
+  if(mr&&mr.state==="recording")mr.stop();
+}
+$("mic").addEventListener("click",function(){
+  if(listening){stopVoice();return}
+  base=$("text").value.trim();
+  if(SR){try{micState(true);startSR()}catch(e){micState(false)}}
+  else if(!LS.get("nota.gkey"))toast("المتصفح ده مابيحولش الصوت لوحده. حط مفتاح Gemini من الإعدادات وهو يحوّله.");
+  else startRec();
+});
+if(SR||(navigator.mediaDevices&&window.MediaRecorder))$("mic").hidden=false;
+else hint("المتصفح ده مفيهوش تسجيل. افتح النوتة من كروم، أو استخدم ميكروفون الكيبورد.");
+
+/* ---------- boot ---------- */
+(function(){
+  var m=/#cfg=([A-Za-z0-9+/=_-]+)/.exec(location.hash);
+  if(m){
+    try{var c=JSON.parse(decodeURIComponent(escape(atob(m[1]))));if(c.apiKey&&c.projectId)LS.set("nota.fb",JSON.stringify(c))}catch(e){}
+    try{history.replaceState(null,"",location.pathname+location.search)}catch(e){location.hash=""}
+  }
+})();
+useLocal();render();
+if(getCfg())connect();
+})();
+</script>
+</body>
+</html>
