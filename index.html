@@ -671,15 +671,20 @@ $("gear").addEventListener("click",settingsSheet);
 
 /* ---------- Gemini ---------- */
 var GAPI="https://generativelanguage.googleapis.com/v1beta/models";
+function fetchT(url,opt,ms){
+  var c=new AbortController(),timer=setTimeout(function(){c.abort()},ms);
+  opt=opt||{};opt.signal=c.signal;
+  return fetch(url,opt).then(function(r){clearTimeout(timer);return r},function(e){clearTimeout(timer);throw e});
+}
 function ver(n){var m=/gemini-(\d+(?:\.\d+)?)/.exec(n);return m?parseFloat(m[1]):0}
 function models(key){
   var saved=LS.get("nota.gmodel");
-  var fallback=["gemini-3.8-flash","gemini-3.5-flash-lite","gemini-2.5-flash","gemini-2.5-flash-lite"];
-  return fetch(GAPI+"?pageSize=200",{headers:{"x-goog-api-key":key}}).then(function(r){return r.ok?r.json():{models:[]}},function(){return {models:[]}}).then(function(j){
+  var fallback=["gemini-3.5-flash-lite","gemini-3.8-flash","gemini-2.5-flash-lite"];
+  return fetchT(GAPI+"?pageSize=200",{headers:{"x-goog-api-key":key}},6000).then(function(r){return r.ok?r.json():{models:[]}},function(){return {models:[]}}).then(function(j){
     var list=(j.models||[]).filter(function(m){
       return (m.supportedGenerationMethods||[]).indexOf("generateContent")>=0&&/flash/.test(m.name)&&!/tts|image|live|audio|embed|preview|exp/.test(m.name);
     }).map(function(m){return m.name.replace("models/","")})
-      .sort(function(a,b){return ver(b)-ver(a)||(/lite/.test(a)?1:0)-(/lite/.test(b)?1:0)}).slice(0,5);
+      .sort(function(a,b){return (/lite/.test(b)?1:0)-(/lite/.test(a)?1:0)||ver(b)-ver(a)}).slice(0,3);
     if(!list.length)list=fallback;
     if(saved){list=list.filter(function(m){return m!==saved});list.unshift(saved)}
     return list;
@@ -689,24 +694,33 @@ function gemini(parts){
   var key=LS.get("nota.gkey");
   if(!key)return Promise.reject({nokey:true});
   return models(key).then(function(list){
-    var i=0,last="";
-    function next(){
-      if(i>=list.length)return Promise.reject({msg:last||"Gemini مردش."});
-      var m=list[i++];
-      return fetch(GAPI+"/"+m+":generateContent",{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":key},
-        body:JSON.stringify({contents:[{role:"user",parts:parts}]})}).then(function(r){
+    var i=0,last="",slow=0;
+    function call(m,think){
+      var body={contents:[{role:"user",parts:parts}]};
+      if(think)body.generationConfig={thinkingConfig:{thinkingLevel:"low"}};
+      return fetchT(GAPI+"/"+m+":generateContent",{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":key},
+        body:JSON.stringify(body)},20000).then(function(r){
         return r.json().catch(function(){return {}}).then(function(j){
           if(r.ok){
-            var c=j.candidates&&j.candidates[0],t=c&&c.content&&c.content.parts?c.content.parts.map(function(p){return p.text||""}).join(""):"";
+            var c=j.candidates&&j.candidates[0],t=c&&c.content&&c.content.parts?c.content.parts.map(function(p){return p.thought?"":(p.text||"")}).join(""):"";
             if(!t){last="Gemini رجّع رد فاضي.";return next()}
             LS.set("nota.gmodel",m);return t.trim();
           }
           var em=(j.error&&j.error.message)||"";
           if(/API key/i.test(em)||r.status===401||r.status===403)return Promise.reject({msg:"مفتاح Gemini مش مظبوط. راجعه من الإعدادات."});
+          if(r.status===400&&think)return call(m,false);
           last=r.status===429?"حد الاستخدام المجاني خلص دلوقتي. جرب بعد شوية.":"Gemini رفض الطلب ("+r.status+").";
           return next();
         });
-      },function(){return Promise.reject({msg:"مفيش نت."})});
+      },function(e){
+        if(e&&e.name==="AbortError"){last="Gemini اتأخر في الرد.";if(LS.get("nota.gmodel")===m)LS.set("nota.gmodel",null);
+          if(++slow>=2)return Promise.reject({msg:last});return next()}
+        return Promise.reject({msg:"مفيش نت، أو المتصفح مانع الاتصال بـ Gemini."});
+      });
+    }
+    function next(){
+      if(i>=list.length)return Promise.reject({msg:last||"Gemini مردش."});
+      return call(list[i++],true);
     }
     return next();
   });
@@ -777,6 +791,7 @@ function assistant(text){
   openSheet(h("div",{class:"sheet"},h("h3",{text:"«"+text+"»"}),reply,body,extra,acts,
     h("div",{class:"btns"},h("button",{type:"button",class:"btn",text:"قفل",on:{click:closeSheet}}))),true);
   function show(o,note){
+    body.textContent="";extra.textContent="";acts.textContent="";
     var byId={},names={};
     S.tasks.forEach(function(t){byId[t.id]=t});S.lists.forEach(function(l){names[l.id]=l.name});
     var ids=(Array.isArray(o.taskIds)?o.taskIds:[]).filter(function(id,i,a){return byId[id]&&a.indexOf(id)===i});
@@ -813,14 +828,20 @@ function assistant(text){
       }}}));
     }
   }
+  var slow=setTimeout(function(){
+    var ids=keywordFind(text);
+    show({reply:(ids.length?"دول اللي فيهم نفس الكلمة لحد ما Gemini يرد:":"لسه بفكر، ثواني…"),taskIds:ids});
+  },4000);
   var data=JSON.stringify({lists:S.lists.map(function(l){return {id:l.id,name:l.name}}),
     tasks:S.tasks.map(function(t){return {id:t.id,listId:t.listId,text:t.text,done:!!t.done}})});
   var nowD=new Date();
   gemini([{text:"الوقت دلوقتي عند صاحب النوتة: "+toInput(nowD.getTime())+" ("+nowD.toLocaleDateString("ar-EG",{weekday:"long"})+"). لو قال بكرة أو يوم معين أو الساعة كذا احسب الميعاد من الوقت ده، ولو قال فكّرني يبقى طلب إضافة ملاحظة بميعاد، ولو ماحددش ساعة خليها 09:00.\n"+"إنت مساعد جوه نوتة مهام شخصية. دي كل اللستات والملاحظات بصيغة JSON:\n"+data+"\n\nطلب صاحب النوتة: «"+text+"»\n\nافهم الطلب ورجّع JSON بس من غير أي كلام تاني بالشكل ده:\n{\"reply\":\"رد قصير بالعامية المصرية يجاوب على الطلب أو يشرح اللي لقيته\",\"taskIds\":[\"id لكل ملاحظة موجودة ليها علاقة بالطلب\"],\"listName\":\"اسم قصير مناسب للستة تجمعهم لو الطلب تجميع، وإلا سيبه فاضي\",\"newTasks\":[{\"listId\":\"id لستة موجودة\",\"text\":\"نص ملاحظة جديدة\",\"due\":\"YYYY-MM-DDTHH:mm بالتوقيت المحلي لو اتذكر ميعاد، وإلا فاضي\"}]}\nقواعد: في taskIds دوّر بالمعنى مش بالحرف، يعني لو طلب مهام شخص أو عميل أو موضوع هات كل اللي يخصه حتى لو الاسم مكتوب بشكل مختلف أو فيه غلطة إملائية. newTasks تتملي بس لو طلب صريح إنه يضيف حاجة، واختار أنسب لستة موجودة. استخدم الـ id زي ما هو بالظبط."}])
   .then(function(t){
+    clearTimeout(slow);
     var o=null;try{o=JSON.parse(t.slice(t.indexOf("{"),t.lastIndexOf("}")+1))}catch(e){}
     if(o)show(o);else show({reply:t.replace(/\*\*/g,""),taskIds:[]});
   },function(e){
+    clearTimeout(slow);
     var ids=keywordFind(text);
     show({reply:ids.length?"دول اللي فيهم نفس الكلمة (بحث عادي):":"ملقتش الكلمة دي في أي ملاحظة (بحث عادي).",taskIds:ids},aiErr(e));
   });
