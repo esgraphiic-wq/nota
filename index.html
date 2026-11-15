@@ -152,6 +152,13 @@ ul{list-style:none;margin:0;padding:0}
 .due.late{color:var(--pen);font-weight:600}
 .done .due{color:var(--muted);font-weight:400}
 .sheet a.btn{display:inline-flex;align-items:center;text-decoration:none;color:var(--accent)}
+.row.sub{padding-inline-start:calc(var(--gutter) + 4px)}
+.row.sub .chk{flex:0 0 30px}
+.row.sub .chk span{width:18px;height:18px;border-width:1.5px}
+.row.sub .chk span::after{width:8px;height:4px}
+.row.sub .txt-btn{font-size:15.5px;padding-inline-start:6px}
+.plus{flex:0 0 34px;height:var(--pitch);margin-inline-start:auto;color:var(--muted);font-size:20px;line-height:1}
+.due.prog{color:var(--muted)}
 /* phone fit */
 html,body{overflow:hidden;overscroll-behavior:none}
 @supports (height:100dvh){html,body{height:100dvh}}
@@ -344,11 +351,31 @@ function deleteList(id){
   S.cur=HOME;if(ids.length)del("tasks",ids);del("lists",[id]);
 }
 function addTask(text,i){put("tasks",newId(),{listId:S.cur,text:text,done:false,createdAt:Date.now()+(i||0),doneAt:null})}
-function toggle(t){
-  var nowDone=!t.done;sound(nowDone);S.fresh=nowDone?t.id:null;
-  patch("tasks",t.id,{done:nowDone,doneAt:nowDone?Date.now():null});
+function parentOf(t){
+  if(!t.parentId)return null;
+  for(var i=0;i<S.tasks.length;i++){var p=S.tasks[i];if(p.id===t.parentId&&p.listId===t.listId)return p}
+  return null;
 }
-function clearDone(){del("tasks",S.tasks.filter(function(t){return t.listId===S.cur&&t.done}).map(function(t){return t.id}))}
+function isTop(t){return !parentOf(t)}
+function kidsOf(t){return S.tasks.filter(function(k){return k.parentId===t.id&&k.listId===t.listId}).sort(function(a,b){return (a.createdAt||0)-(b.createdAt||0)})}
+function addSub(p,text,i){put("tasks",newId(),{listId:p.listId,parentId:p.id,text:text,done:false,createdAt:Date.now()+(i||0),doneAt:null})}
+function toggle(t){
+  var nowDone=!t.done,now=Date.now(),p=parentOf(t),kids=kidsOf(t);
+  var sibsDone=p?kidsOf(p).every(function(k){return k.id===t.id||k.done}):false;
+  sound(nowDone);S.fresh=nowDone?t.id:null;
+  patch("tasks",t.id,{done:nowDone,doneAt:nowDone?now:null});
+  if(nowDone)kids.forEach(function(k){if(!k.done)patch("tasks",k.id,{done:true,doneAt:now})});
+  if(p){
+    if(nowDone&&sibsDone&&!p.done)patch("tasks",p.id,{done:true,doneAt:now});
+    if(!nowDone&&p.done)patch("tasks",p.id,{done:false,doneAt:null});
+  }
+}
+function withKids(ids){
+  var out=ids.slice();
+  S.tasks.forEach(function(k){if(k.parentId&&ids.indexOf(k.parentId)>=0&&out.indexOf(k.id)<0)out.push(k.id)});
+  return out;
+}
+function clearDone(){del("tasks",withKids(S.tasks.filter(function(t){return t.listId===S.cur&&t.done&&isTop(t)}).map(function(t){return t.id})))}
 
 /* ---------- render ---------- */
 function render(){
@@ -360,7 +387,7 @@ function render(){
   tabs.appendChild(h("button",{class:"tab",role:"tab","aria-selected":home?"true":"false",style:"--tc:var(--accent)",
     on:{click:function(){S.cur=HOME;S.fresh=null;render()}}},h("span",{text:"الملخص"})));
   S.lists.forEach(function(l){
-    var left=S.tasks.filter(function(t){return t.listId===l.id&&!t.done}).length;
+    var left=S.tasks.filter(function(t){return t.listId===l.id&&!t.done&&isTop(t)}).length;
     tabs.appendChild(h("button",{class:"tab",role:"tab","data-id":l.id,"aria-selected":l.id===S.cur?"true":"false",style:tc(l),
       on:{click:function(){if(drag.just)return;S.cur=l.id;S.fresh=null;render()}}},
       h("span",{text:l.name}),h("span",{class:"n",text:String(left)})));
@@ -377,15 +404,19 @@ function render(){
     h("div",{class:"acts"},
       h("button",{class:"ai",text:"لخّص وحلّل",on:{click:function(){aiSheet(l)}}}),
       h("button",{text:"تعديل",on:{click:function(){listSheet(l)}}}))));
-  var mine=S.tasks.filter(function(t){return t.listId===l.id});
+  var mine=S.tasks.filter(function(t){return t.listId===l.id&&isTop(t)});
   var open=mine.filter(function(t){return !t.done}).sort(function(a,b){return (b.createdAt||0)-(a.createdAt||0)});
   var done=mine.filter(function(t){return t.done}).sort(function(a,b){return (b.doneAt||0)-(a.doneAt||0)});
+  function family(ul,t){
+    var kids=kidsOf(t);ul.appendChild(row(t,{kids:kids,plus:!t.done}));
+    kids.forEach(function(k){ul.appendChild(row(k,{sub:true}))});
+  }
   if(!mine.length)page.appendChild(h("p",{class:"note",text:"الصفحة فاضية. اكتب أول ملاحظة تحت أو سجّلها بصوتك."}));
-  var ul=h("ul");open.forEach(function(t){ul.appendChild(row(t))});page.appendChild(ul);
+  var ul=h("ul");open.forEach(function(t){family(ul,t)});page.appendChild(ul);
   if(done.length){
     page.appendChild(h("div",{class:"sep"},h("span",{text:"خلصت ("+done.length+")"}),
       h("button",{text:"امسح اللي خلص",on:{click:clearDone}})));
-    var ul2=h("ul");done.forEach(function(t){ul2.appendChild(row(t))});page.appendChild(ul2);
+    var ul2=h("ul");done.forEach(function(t){family(ul2,t)});page.appendChild(ul2);
   }
   page.scrollTop=keep;
 }
@@ -452,7 +483,7 @@ function dragEnd(){
 })();
 function renderHome(page){
   page.setAttribute("style","--tc:var(--accent)");
-  var open=S.tasks.filter(function(t){return !t.done}).length;
+  var open=S.tasks.filter(function(t){return !t.done&&isTop(t)}).length;
   page.appendChild(h("div",{class:"head"},h("h2",{text:"الملخص"}),
     h("div",{class:"acts"},
       h("button",{class:"ai",text:"لخّص كل حاجة",on:{click:function(){aiSheet(null)}}}),
@@ -473,13 +504,13 @@ function renderHome(page){
     page.appendChild(ds);
   }
   S.lists.forEach(function(l){
-    var mine=S.tasks.filter(function(t){return t.listId===l.id});
+    var mine=S.tasks.filter(function(t){return t.listId===l.id&&isTop(t)});
     var todo=mine.filter(function(t){return !t.done}).sort(function(a,b){return (b.createdAt||0)-(a.createdAt||0)});
     var go=function(){S.cur=l.id;S.fresh=null;render()};
     var sec=h("section",{style:tc(l)},
       h("div",{class:"hl"},h("button",{class:"name",text:l.name,on:{click:go}}),
         h("span",{text:todo.length+" لسه · "+(mine.length-todo.length)+" خلصت"})));
-    var ul=h("ul");todo.slice(0,3).forEach(function(t){ul.appendChild(row(t))});sec.appendChild(ul);
+    var ul=h("ul");todo.slice(0,3).forEach(function(t){ul.appendChild(row(t,{kids:kidsOf(t)}))});sec.appendChild(ul);
     if(todo.length>3)sec.appendChild(h("button",{class:"more",text:"و "+(todo.length-3)+" كمان، افتح اللستة",on:{click:go}}));
     if(!todo.length)sec.appendChild(h("button",{class:"more",text:mine.length?"كله خلص هنا.":"فاضية.",on:{click:go}}));
     page.appendChild(sec);
@@ -540,12 +571,33 @@ function checkDue(){
   if(hit||S.cur===HOME)if(!$("layer").firstChild)render();
 }
 setInterval(checkDue,30000);
-function row(t){
-  return h("li",{class:"row"+(t.done?" done":"")+(S.fresh===t.id?" fresh":"")},
+function row(t,o){
+  o=o||{};
+  var kids=o.kids||[],dn=kids.filter(function(k){return k.done}).length;
+  return h("li",{class:"row"+(t.done?" done":"")+(o.sub?" sub":"")+(S.fresh===t.id?" fresh":"")},
     h("button",{class:"chk","aria-pressed":t.done?"true":"false","aria-label":(t.done?"رجّع: ":"خلصت: ")+t.text,
       on:{click:function(){toggle(t)}}},h("span")),
     h("button",{class:"txt-btn","aria-label":"عدّل: "+t.text,on:{click:function(){taskSheet(t)}}},t.text,
-      t.due?h("small",{class:"due"+(!t.done&&t.due<Date.now()?" late":""),text:fmtDue(t.due)}):null));
+      kids.length?h("small",{class:"due prog",text:dn+"/"+kids.length}):null,
+      t.due?h("small",{class:"due"+(!t.done&&t.due<Date.now()?" late":""),text:fmtDue(t.due)}):null),
+    o.plus?h("button",{class:"plus","aria-label":"ضيف نقطة فرعية تحت: "+t.text,text:"+",on:{click:function(){subSheet(t)}}}):null);
+}
+function subSheet(t){
+  var shown=kidsOf(t).map(function(k){return k.text}),n=0;
+  var input=h("input",{id:"subText",type:"text",placeholder:"مثلاً: تصميم",enterkeyhint:"done"}),list=h("div",{class:"pts"});
+  function draw(){list.textContent="";shown.forEach(function(s){list.appendChild(h("div",{class:"ord"},h("span",{style:"color:var(--ink);font-weight:400",text:s})))})}
+  draw();
+  openSheet(h("form",{class:"sheet",on:{submit:function(e){
+    e.preventDefault();var v=input.value.trim();if(!v){closeSheet();return}
+    addSub(t,v,n++);shown.push(v);input.value="";draw();input.focus();
+  }}},
+    h("h3",{text:"نقط فرعية"}),
+    h("p",{text:"تحت «"+t.text+"». اكتب الخطوة ودوس ضيف، وكرر لحد ما تخلص."}),
+    list,
+    h("label",{for:"subText"},"نقطة فرعية جديدة",input),
+    h("div",{class:"btns"},
+      h("button",{type:"submit",class:"btn main",text:"ضيف"}),
+      h("button",{type:"button",class:"btn",text:"تم",on:{click:closeSheet}}))));
 }
 
 /* ---------- sheets ---------- */
@@ -580,28 +632,31 @@ function taskSheet(t){
   var input=h("input",{id:"taskText",type:"text",value:t.text});
   var sel=h("select",{id:"taskList"});
   S.lists.forEach(function(l){var o=h("option",{value:l.id,text:l.name});if(l.id===t.listId)o.selected=true;sel.appendChild(o)});
+  var sub=!!parentOf(t);
   var when=h("input",{id:"taskDue",type:"datetime-local",class:"ltr",value:t.due?toInput(t.due):""});
   function dueMs(){var v=when.value?new Date(when.value).getTime():null;return v&&!isNaN(v)?v:null}
   openSheet(h("form",{class:"sheet",on:{submit:function(e){
     e.preventDefault();var v=input.value.trim();if(!v)return;
     var p={},d=dueMs();
-    if(v!==t.text)p.text=v;if(sel.value!==t.listId)p.listId=sel.value;
+    if(v!==t.text)p.text=v;
+    if(!sub&&sel.value!==t.listId){p.listId=sel.value;kidsOf(t).forEach(function(k){patch("tasks",k.id,{listId:sel.value})})}
     if(d!==(t.due||null)){p.due=d;if(d)askNotify()}
     if(Object.keys(p).length)patch("tasks",t.id,p);closeSheet();
   }}},
-    h("h3",{text:"تعديل الملاحظة"}),
+    h("h3",{text:sub?"تعديل النقطة الفرعية":"تعديل الملاحظة"}),
     h("label",{for:"taskText"},"النص",input),
-    h("label",{for:"taskList"},"في لستة",sel),
+    sub?null:h("label",{for:"taskList"},"في لستة",sel),
     h("label",{for:"taskDue"},"ميعاد (اختياري)",when),
     h("div",{class:"btns"},
       h("button",{type:"button",class:"btn",text:"تذكير في تقويم جوجل",style:"color:var(--accent)",on:{click:function(){
         var d=dueMs();if(!d){toast("حدد الميعاد الأول.");return}
         window.open(calUrl({text:input.value.trim()||t.text},d),"_blank");
       }}}),
-      h("button",{type:"button",class:"btn",text:"شيل الميعاد",on:{click:function(){when.value=""}}})),
+      h("button",{type:"button",class:"btn",text:"شيل الميعاد",on:{click:function(){when.value=""}}}),
+      sub?null:h("button",{type:"button",class:"btn",text:"نقط فرعية",on:{click:function(){subSheet(t)}}})),
     h("div",{class:"btns"},
       h("button",{type:"submit",class:"btn main",text:"احفظ"}),
-      twoTap("امسح","متأكد؟",function(){del("tasks",[t.id])}),
+      twoTap("امسح",kidsOf(t).length?"متأكد؟ هتتمسح بنقطها الفرعية":"متأكد؟",function(){del("tasks",withKids([t.id]))}),
       h("button",{type:"button",class:"btn",text:"إلغاء",on:{click:closeSheet}}))),true);
 }
 document.addEventListener("keydown",function(e){if(e.key==="Escape")closeSheet()});
@@ -812,7 +867,11 @@ function assistant(text){
         if(!p.length||!name){toast("اختار ملاحظات واكتب اسم اللستة.");return}
         var ex=S.lists.filter(function(l){return norm(l.name)===norm(name)})[0],id=ex?ex.id:newId();
         if(!ex)put("lists",id,{name:name,color:S.lists.length%COLORS,order:Date.now()});
-        p.forEach(function(tid){if(byId[tid].listId!==id)patch("tasks",tid,{listId:id})});
+        withKids(p).forEach(function(tid){
+          var x=byId[tid];if(!x||x.listId===id)return;
+          var keep=x.parentId&&p.indexOf(x.parentId)>=0;
+          patch("tasks",tid,keep||!x.parentId?{listId:id}:{listId:id,parentId:null});
+        });
         S.cur=id;S.fresh=null;closeSheet();render();
       }}}));
       acts.appendChild(h("button",{type:"button",class:"btn",text:"علّم عليهم خلصت",on:{click:function(){
