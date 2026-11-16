@@ -230,6 +230,7 @@ html,body{overflow:hidden;overscroll-behavior:none}
 (function(){
 "use strict";
 var COLORS=5,FBV="https://www.gstatic.com/firebasejs/12.9.0/";
+var BUILD="2026-11-16 19:40";
 var HOME="__home",S={lists:[],tasks:[],cur:HOME,fresh:null};
 var FB=null,cloud=null,migrated=false;
 var $=function(id){return document.getElementById(id)};
@@ -969,7 +970,8 @@ function settingsSheet(){
         if(isCloud())FB.fs.setDoc(ref("meta","settings"),{geminiKey:v},{merge:true}).catch(fail);
         toast(v?"المفتاح اتحفظ":"المفتاح اتمسح");
       }}}),
-      h("button",{type:"button",class:"btn",text:"قفل",on:{click:closeSheet}})));
+      h("button",{type:"button",class:"btn",text:"قفل",on:{click:closeSheet}})),
+    h("p",{style:"font-size:12px;text-align:center",text:"نسخة "+BUILD}));
   kids.forEach(function(k){if(k)box.appendChild(k)});
   openSheet(box,true);
 }
@@ -1246,7 +1248,12 @@ $("install").addEventListener("click",function(){
   if(!installEvt)return;
   installEvt.prompt();installEvt.userChoice.then(function(){installEvt=null;$("install").hidden=true},function(){});
 });
-if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").catch(function(){});
+if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceWorker.register("sw.js").then(function(r){
+  r.update();
+  setInterval(function(){r.update()},6e5);
+  var reloaded=false;
+  navigator.serviceWorker.addEventListener("controllerchange",function(){if(reloaded)return;reloaded=true;location.reload()});
+},function(){});
 
 /* ---------- boot ---------- */
 (function(){
