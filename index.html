@@ -570,6 +570,7 @@ function fmtDue(ms){
     d.toLocaleDateString("ar-EG-u-nu-latn",{weekday:"long"})+" "+d.getDate()+"/"+(d.getMonth()+1);
   return day+" "+time;
 }
+var MONTHS=["يناير","فبراير","مارس","ابريل","مايو","يونيو","يوليو","اغسطس","سبتمبر","اكتوبر","نوفمبر","ديسمبر"];
 var WDAYS=[["الاحد","الحد"],["الاتنين","الاثنين"],["التلات","الثلاث"],["الاربع"],["الخميس"],["الجمعه"],["السبت"]];
 function roundUp(d){d.setSeconds(0,0);d.setMinutes(d.getMinutes()>30?60:30);return d}
 function parseWhen(s,nowMs){
@@ -592,6 +593,20 @@ function parseWhen(s,nowMs){
     if(m[3])d.setFullYear(+m[3]<100?2000+ +m[3]:+m[3]);
     else if(d.getTime()<now.getTime()-864e5)d.setFullYear(d.getFullYear()+1);
     txt=txt.replace(m[0]," ");hit=true;dayset=true;
+  }
+  if(!dayset&&(m=new RegExp("(\\d{1,2})\\s*(?:من\\s*)?("+MONTHS.join("|")+")(?:\\s*(\\d{4}))?").exec(txt))){
+    var mi2=MONTHS.indexOf(m[2]);
+    d.setDate(1);d.setMonth(mi2);d.setDate(+m[1]);
+    if(m[3])d.setFullYear(+m[3]);else if(d.getTime()<now.getTime()-864e5)d.setFullYear(d.getFullYear()+1);
+    txt=txt.replace(m[0]," ");hit=dayset=true;
+  }
+  if(!dayset&&(m=/يوم\s*(\d{1,2})(?!\s*[\/\-:.]\s*\d)/.exec(txt))){
+    var dd=+m[1];
+    if(dd>=1&&dd<=31){
+      var cur=d.getDate();d.setDate(1);
+      if(dd<cur)d.setMonth(d.getMonth()+1);
+      d.setDate(dd);txt=txt.replace(m[0]," ");hit=dayset=true;
+    }
   }
   if(!dayset){
     if(/بعد بكره|بعد غد/.test(txt)){d.setDate(d.getDate()+2);txt=txt.replace(/بعد بكره|بعد غد/," ");hit=dayset=true}
@@ -647,7 +662,7 @@ function parseWhen(s,nowMs){
 }
 function whenField(initial){
   var box=h("div",{style:"display:flex;flex-direction:column;gap:6px"});
-  var txt=h("input",{id:"taskWhen",type:"text",placeholder:"مثلاً: بكرة 5 العصر، أو الخميس",value:""});
+  var txt=h("input",{id:"taskWhen",type:"text",placeholder:"مثلاً: بكرة 5 العصر، أو يوم 18 المغرب",value:""});
   var pick=h("input",{id:"taskPick",type:"datetime-local",class:"ltr",value:initial?toInput(initial):""});
   var out=h("p",{class:"whenout"});
   var val=initial||null;
@@ -658,7 +673,7 @@ function whenField(initial){
     if(!s){paint();return}
     var ms=parseWhen(s);
     if(ms){val=ms;pick.value=toInput(ms);out.textContent="الميعاد: "+fmtDue(ms)}
-    else out.textContent="مش فاهم «"+s+"» — جرب: بكرة 5، الخميس، بعد ساعة";
+    else out.textContent="مش فاهم «"+s+"» — جرب: بكرة 5، الخميس، يوم 18 المغرب، بعد ساعة";
   });
   pick.addEventListener("change",function(){
     var v=pick.value?new Date(pick.value).getTime():null;
