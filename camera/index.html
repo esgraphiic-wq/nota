@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#002157">
+<title>كاميرا المحل - إسلام جرافيك</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  :root{--navy:#002157;--deep:#021234;--acc:#74BDEB;--ok:#25B45A}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;font-family:system-ui,'Segoe UI',Tahoma,sans-serif;background:linear-gradient(160deg,var(--navy),var(--deep));color:#fff;min-height:100vh}
+  .wrap{max-width:520px;margin:0 auto;padding:18px 16px 40px}
+  .top{display:flex;align-items:center;gap:12px}
+  .top img{width:48px;height:48px;border-radius:12px}
+  h1{font-size:20px;margin:0}
+  .sub{color:#b9cdea;font-size:13px;margin:4px 0 14px}
+  .lbl{font-size:13px;color:#b9cdea;margin:14px 0 8px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{border:1px solid #3b5f99;background:#0b2a63;color:#fff;border-radius:999px;padding:9px 14px;font-size:15px}
+  .chip.on{background:var(--acc);border-color:var(--acc);color:var(--deep);font-weight:700}
+  input[type=text]{width:100%;padding:12px 14px;border-radius:12px;border:1px solid #3b5f99;background:#0b2a63;color:#fff;font-size:16px}
+  .big{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}
+  .btn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;height:120px;border-radius:20px;font-size:18px;font-weight:700;border:0;color:var(--deep);background:#fff}
+  .btn .ic{font-size:36px}
+  .btn.v{background:var(--acc)}
+  .wide{grid-column:1/3;height:62px;flex-direction:row;background:#0b2a63;color:#fff;border:1px solid #3b5f99;font-size:16px}
+  input[type=file]{display:none}
+  .install{display:none;width:100%;margin-top:14px;padding:14px;border-radius:14px;border:0;background:var(--ok);color:#fff;font-size:17px;font-weight:700}
+  .warn{display:none;background:#5a1f1f;border-radius:14px;padding:12px 14px;margin-top:12px;font-size:14px}
+  .item{background:#0b2a63;border-radius:14px;padding:10px 12px;margin-top:10px;font-size:14px;word-break:break-all}
+  .bar{height:8px;background:#06204b;border-radius:9px;margin-top:8px;overflow:hidden}
+  .bar i{display:block;height:100%;width:0;background:var(--acc);transition:width .3s}
+  .done .bar i{background:var(--ok)}
+  .err{color:#ff9b9b}
+  details{margin-top:18px;background:#0b2a63;border-radius:14px;padding:10px 14px}
+  summary{font-weight:700}
+  details li{margin:6px 0;color:#d6e4f6;font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><img src="icon-192.png" alt=""><div><h1>كاميرا المحل</h1></div></div>
+  <div class="sub">صوّر أو شارك من واتساب، وهيترفع لوحده على الدرايف في فولدر بتاريخ النهارده</div>
+
+  <div class="warn" id="warn">التطبيق لسه مش متفعّل. افتحه مرة من اللينك اللي فيه المفتاح.</div>
+  <button class="install" id="install">⬇️ ثبّت التطبيق على الموبايل</button>
+
+  <div class="lbl">المنتج</div>
+  <div class="chips" id="chips"></div>
+
+  <div class="lbl">ملاحظة (اختياري)</div>
+  <input type="text" id="note" placeholder="مثلاً: مذكرة عربي، تصوير مكنة">
+
+  <div class="big">
+    <label class="btn"><span class="ic">📷</span>صورة<input type="file" accept="image/*" capture="environment" id="ph"></label>
+    <label class="btn v"><span class="ic">🎥</span>فيديو<input type="file" accept="video/*" capture="environment" id="vd"></label>
+    <label class="btn wide">🖼️ ارفع من الاستوديو (أكتر من ملف)<input type="file" accept="image/*,video/*" multiple id="gl"></label>
+  </div>
+
+  <div id="list"></div>
+
+  <details>
+    <summary>نصايح سريعة للتصوير</summary>
+    <ul>
+      <li>امسك الموبايل طولي، والمنتج في النص.</li>
+      <li>خلفية سادة (ورقة بيضا أو قماشة)، ونضّف المنتج من البصمات.</li>
+      <li>إضاءة من الشباك أو لمبة بيضا من الجنب، ومن غير فلاش.</li>
+      <li>صورة من قدام، وواحدة بزاوية، وواحدة قريبة للتفاصيل.</li>
+      <li>الفيديو: 10 لـ 15 ثانية، حركة بطيئة حوالين المنتج أو المكنة وهي شغالة.</li>
+      <li>متصورش أسامي أو وشوش عملاء أو لوجوهات مدارس.</li>
+    </ul>
+  </details>
+  <details>
+    <summary>إزاي أبعت صور من واتساب؟</summary>
+    <ul>
+      <li>في الشات اضغط ضغطة طويلة على الصور وحددهم.</li>
+      <li>اضغط زرار المشاركة واختار «كاميرا المحل».</li>
+      <li>التطبيق هيفتح ويرفعهم لوحده. استنى لحد ما تظهر ✓.</li>
+    </ul>
+  </details>
+</div>
+<script>
+const API = 'https://script.google.com/macros/s/AKfycbwTNAJTFfWs6EK_2TC5fVY7_VwyRl4dDxwaX8snnWzlB8RRkHXIpGuOzAubL8zI6V0i/exec';
+const CHUNK = 4 * 1024 * 1024; // مضاعف 256KB
+const PRODUCTS = ['مذكرات','دروع','كؤوس','ميداليات','بادجات','شهادات','أجندات','نوت بوك','مجات','هدايا','لافتات','تصوير المكن','من عميل','أخرى'];
+
+// المفتاح بيتحفظ من اللينك أول مرة
+function store(k,v){try{ if(v===undefined) return localStorage.getItem(k); localStorage.setItem(k,v);}catch(e){return null}}
+(function(){const m=location.hash.match(/k=([A-Za-z0-9_-]+)/); if(m){store('camKey',m[1]); history.replaceState(null,'',location.pathname+location.search);}})();
+const KEY = store('camKey');
+if(!KEY) document.getElementById('warn').style.display='block';
+
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+let deferred=null; const ib=document.getElementById('install');
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e;ib.style.display='block';});
+ib.onclick=async()=>{ if(!deferred) return; deferred.prompt(); await deferred.userChoice; deferred=null; ib.style.display='none'; };
+
+let product = '';
+const chips = document.getElementById('chips');
+PRODUCTS.forEach(p => {
+  const b = document.createElement('button'); b.className = 'chip'; b.textContent = p;
+  b.onclick = () => { product = product === p ? '' : p; [...chips.children].forEach(c => c.classList.toggle('on', c.textContent === product)); };
+  chips.appendChild(b);
+});
+function pad(n){return String(n).padStart(2,'0')}
+function stamp(){const d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'_'+pad(d.getHours())+'-'+pad(d.getMinutes())+'-'+pad(d.getSeconds())}
+function clean(s){return s.replace(/[\\/:*?"<>|]/g,' ').replace(/\s+/g,' ').trim()}
+function ext(f){const m=(f.name||'').match(/\.[A-Za-z0-9]+$/);if(m)return m[0].toLowerCase();return (f.type||'').startsWith('video')?'.mp4':'.jpg'}
+function b64(blob){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(blob)})}
+async function api(body){
+  const r = await fetch(API,{method:'POST',body:JSON.stringify(Object.assign({k:KEY},body)),credentials:'omit'});
+  const j = await r.json(); if(j.error) throw new Error(j.error); return j;
+}
+let queue = Promise.resolve(); let n = 0;
+function add(files, tag){
+  [...files].forEach(f => {
+    n++;
+    const parts=[stamp()+'-'+n, tag||product, clean(document.getElementById('note').value)].filter(Boolean);
+    const name=parts.join('_')+ext(f);
+    const el=document.createElement('div'); el.className='item';
+    el.innerHTML='<div class="nm"></div><div class="st">في الانتظار...</div><div class="bar"><i></i></div>';
+    el.querySelector('.nm').textContent=name;
+    document.getElementById('list').prepend(el);
+    queue = queue.then(()=>upload(f,name,el));
+  });
+}
+async function upload(f,name,el){
+  const st=el.querySelector('.st'), bar=el.querySelector('.bar i');
+  if(!KEY){ st.className='st err'; st.textContent='التطبيق مش متفعّل، افتح اللينك اللي فيه المفتاح'; return; }
+  let tries=0;
+  try{
+    st.textContent='بيترفع... 0%';
+    const {url}=await api({op:'start',name,mime:f.type||'application/octet-stream',size:f.size});
+    for(let s=0;s<f.size;){
+      const e=Math.min(s+CHUNK,f.size);
+      try{
+        await api({op:'chunk',url,b64:await b64(f.slice(s,e)),start:s,total:f.size});
+        s=e; tries=0;
+        const p=Math.round(s/f.size*100); bar.style.width=p+'%'; st.textContent='بيترفع... '+p+'%';
+      }catch(err){ if(++tries>4) throw err; st.textContent='النت فصل، بحاول تاني...'; await new Promise(r=>setTimeout(r,3000)); }
+    }
+    el.classList.add('done'); bar.style.width='100%'; st.textContent='اترفع ✓';
+  }catch(err){ st.className='st err'; st.textContent='ماترفعش: '+(err&&err.message?err.message:err); }
+}
+['ph','vd','gl'].forEach(id=>{const i=document.getElementById(id);i.onchange=()=>{add(i.files);i.value='';}});
+
+// ملفات جاية من المشاركة (واتساب / الاستوديو)
+(async function(){
+  if(!/[?&]shared=/.test(location.search) || !('caches' in window)) return;
+  history.replaceState(null,'',location.pathname);
+  const cache=await caches.open('cam-shared'); const keys=await cache.keys(); const files=[];
+  for(const k of keys){
+    const r=await cache.match(k); const blob=await r.blob();
+    const nm=decodeURIComponent(r.headers.get('X-Name')||'file');
+    files.push(new File([blob],nm,{type:blob.type})); await cache.delete(k);
+  }
+  if(files.length) add(files,'من واتساب');
+})();
+</script>
+</body>
+</html>
