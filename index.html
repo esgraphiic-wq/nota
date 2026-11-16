@@ -159,6 +159,14 @@ ul{list-style:none;margin:0;padding:0}
 .row.sub .txt-btn{font-size:15.5px;padding-inline-start:6px}
 .plus{flex:0 0 34px;height:var(--pitch);margin-inline-start:auto;color:var(--muted);font-size:20px;line-height:1}
 .due.prog{color:var(--muted)}
+.amt{flex:0 0 auto;margin-inline-start:auto;padding-inline-start:10px;line-height:var(--pitch);font-size:16px;font-weight:600;font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:isolate}
+.amt.neg{color:var(--pen)}
+.done .amt{color:var(--muted);text-decoration:line-through;font-weight:400}
+.msum{display:flex;justify-content:space-between;align-items:center;height:var(--pitch);padding-inline:calc(var(--gutter) + 12px) 12px;font-size:14px;color:var(--muted)}
+.msum b{font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:isolate;color:var(--ink);font-weight:500}
+.msum.total{font-size:16px;font-weight:600;color:var(--ink);box-shadow:inset 0 -2px 0 var(--tc)}
+.msum.total b{font-size:22px;font-weight:600;color:var(--tc)}
+.tab .n.m{direction:ltr;unicode-bidi:isolate}
 /* phone fit */
 html,body{overflow:hidden;overscroll-behavior:none}
 @supports (height:100dvh){html,body{height:100dvh}}
@@ -345,7 +353,7 @@ function del(kind,ids){
   if(isCloud()){ids.forEach(function(id){FB.fs.deleteDoc(ref(kind,id)).catch(fail)});return}
   S[kind]=S[kind].filter(function(x){return ids.indexOf(x.id)<0});saveLocal();render();
 }
-function addList(name){var id=newId();S.cur=id;put("lists",id,{name:name,color:S.lists.length%COLORS,order:Date.now()})}
+function addList(name,extra){var id=newId();S.cur=id;put("lists",id,Object.assign({name:name,color:S.lists.length%COLORS,order:Date.now()},extra||{}))}
 function deleteList(id){
   var ids=S.tasks.filter(function(t){return t.listId===id}).map(function(t){return t.id});
   S.cur=HOME;if(ids.length)del("tasks",ids);del("lists",[id]);
@@ -390,15 +398,16 @@ function render(){
     var left=S.tasks.filter(function(t){return t.listId===l.id&&!t.done&&isTop(t)}).length;
     tabs.appendChild(h("button",{class:"tab",role:"tab","data-id":l.id,"aria-selected":l.id===S.cur?"true":"false",style:tc(l),
       on:{click:function(){if(drag.just)return;S.cur=l.id;S.fresh=null;render()}}},
-      h("span",{text:l.name}),h("span",{class:"n",text:String(left)})));
+      h("span",{text:l.name}),isMoney(l)?h("span",{class:"n m",text:fmt(moneyTotals(l).total)}):h("span",{class:"n",text:String(left)})));
   });
   tabs.appendChild(h("button",{class:"tab add","aria-label":"لستة جديدة",text:"+",on:{click:function(){listSheet(null)}}}));
 
   var page=$("page"),keep=page.scrollTop;page.textContent="";
   var l=curList();
-  $("text").placeholder=home?"اطلب: جمّع مهام…":"ملاحظة جديدة…";
+  $("text").placeholder=home?"اطلب: جمّع مهام…":isMoney(l)?"مثلاً: اتخصم 500 قسط":"ملاحظة جديدة…";
   chip();
   if(home){renderHome(page);page.scrollTop=keep;return}
+  if(isMoney(l)){renderMoney(page,l);page.scrollTop=S.scrollEnd?page.scrollHeight:keep;S.scrollEnd=false;return}
   page.setAttribute("style",tc(l));
   page.appendChild(h("div",{class:"head"},h("h2",{text:l.name}),
     h("div",{class:"acts"},
@@ -483,7 +492,7 @@ function dragEnd(){
 })();
 function renderHome(page){
   page.setAttribute("style","--tc:var(--accent)");
-  var open=S.tasks.filter(function(t){return !t.done&&isTop(t)}).length;
+  var open=S.tasks.filter(function(t){return !t.done&&isTop(t)&&!isMoney(listById(t.listId))}).length;
   page.appendChild(h("div",{class:"head"},h("h2",{text:"الملخص"}),
     h("div",{class:"acts"},
       h("button",{class:"ai",text:"لخّص كل حاجة",on:{click:function(){aiSheet(null)}}}),
@@ -504,6 +513,14 @@ function renderHome(page){
     page.appendChild(ds);
   }
   S.lists.forEach(function(l){
+    if(isMoney(l)){
+      var mt=moneyTotals(l),n=S.tasks.filter(function(t){return t.listId===l.id&&!t.done}).length;
+      var open2=function(){S.cur=l.id;S.fresh=null;render()};
+      page.appendChild(h("section",{style:tc(l)},
+        h("div",{class:"hl"},h("button",{class:"name",text:l.name,on:{click:open2}}),h("span",{text:n+" بند"})),
+        h("div",{class:"msum total"},h("span",{text:totalLabel(l,mt)}),h("b",{text:fmt(mt.total)}))));
+      return;
+    }
     var mine=S.tasks.filter(function(t){return t.listId===l.id&&isTop(t)});
     var todo=mine.filter(function(t){return !t.done}).sort(function(a,b){return (b.createdAt||0)-(a.createdAt||0)});
     var go=function(){S.cur=l.id;S.fresh=null;render()};
@@ -615,19 +632,127 @@ function twoTap(label,sure,fn){
   }}});
   return b;
 }
+/* ---------- money pages ---------- */
+function listById(id){for(var i=0;i<S.lists.length;i++)if(S.lists[i].id===id)return S.lists[i];return null}
+function isMoney(l){return !!l&&l.kind==="money"}
+function fmt(n){return (Math.round(n*100)/100).toLocaleString("en-US")}
+function moneyTotals(l){
+  var plus=0,minus=0,base=+l.base||0;
+  S.tasks.forEach(function(t){
+    if(t.listId!==l.id||t.done)return;
+    var a=+t.amount||0;if(a>=0)plus+=a;else minus-=a;
+  });
+  return {base:base,plus:plus,minus:minus,total:base+plus-minus};
+}
+function totalLabel(l,m){return l.mode==="sub"||m.base||m.minus?"الباقي":"الإجمالي"}
+function latin(s){return String(s).replace(/[٠-٩]/g,function(d){return "٠١٢٣٤٥٦٧٨٩".indexOf(d)}).replace(/٫/g,".").replace(/٬/g,",")}
+function parseMoney(text,mode){
+  var s=latin(text).replace(/(\d),(?=\d{3}\b)/g,"$1");
+  var m=/(\d+(?:\.\d+)?)\s*(ألف|الف|آلاف|الاف|مليون)?/.exec(s);
+  if(!m)return null;
+  var n=parseFloat(m[1]);
+  if(m[2])n*=m[2]==="مليون"?1e6:1000;
+  var k=norm(s),sign;
+  if(/(^|\s)(اتخصم|خصم|اخصم|يتخصم|دفع|دفعت|دفعلي|سدد|سددت|سداد|صرف|صرفت|مصروف|سحب|سحبت|ناقص|نقص|رجع|رجعت|شيل)(\s|$)/.test(k)||/^\s*[-−]/.test(s))sign=-1;
+  else if(/(^|\s)(زود|زودت|زاد|ضيف|اضاف|اضافه|استلف|سلف|سلفه|دين|عليه|ايداع|دخل|استلمت|قبضت|وصل|وصلني)(\s|$)/.test(k)||/^\s*\+/.test(s))sign=1;
+  else sign=mode==="sub"?-1:1;
+  var label=s.replace(m[0]," ").replace(/^\s*[-−+]\s*/,"").replace(/\s+(جنيه|جنية|ج\.م|ريال|ر\.س)(\s|$)/g," ").replace(/\s+/g," ").trim();
+  return {amount:sign*n,label:label||(sign<0?"خصم":"إضافة")};
+}
+function addEntry(l,amount,label){
+  S.scrollEnd=true;
+  put("tasks",newId(),{listId:l.id,text:label,amount:amount,done:false,createdAt:Date.now(),doneAt:null});
+}
+function aiMoney(text,l){
+  hint("بفهم المبلغ…");
+  gemini([{text:"دي جملة عن بند مالي اتقالت بالعامية المصرية: «"+text+"». طلّع منها JSON بس بالشكل ده: {\"amount\":رقم موجب,\"sign\":\"+\" أو \"-\",\"label\":\"وصف قصير للبند من غير المبلغ\"}. الإشارة - لو خصم أو دفع أو سداد أو مصروف، و + لو زيادة أو دين جديد أو إضافة. لو مفيش إشارة واضحة استخدم \""+(l.mode==="sub"?"-":"+")+"\". لو مفيش مبلغ خلي amount صفر."}])
+  .then(function(t){
+    hint("");
+    var o=null;try{o=JSON.parse(t.slice(t.indexOf("{"),t.lastIndexOf("}")+1))}catch(e){}
+    var n=o?Math.abs(+o.amount):0;
+    if(!n){toast("ملقتش مبلغ. اكتبه بالأرقام، مثلاً: ورق 350");return}
+    addEntry(l,(o.sign==="-"?-1:1)*n,String(o.label||text));$("text").value="";base="";
+  },function(e){hint("");toast("اكتب المبلغ بالأرقام، مثلاً: ورق 350. ("+aiErr(e)+")")});
+}
+function renderMoney(page,l){
+  page.setAttribute("style",tc(l));
+  page.appendChild(h("div",{class:"head"},h("h2",{text:l.name}),
+    h("div",{class:"acts"},
+      h("button",{class:"ai",text:"لخّص وحلّل",on:{click:function(){aiSheet(l)}}}),
+      h("button",{text:"تعديل",on:{click:function(){listSheet(l)}}}))));
+  var m=moneyTotals(l);
+  function line(label,val,cls){page.appendChild(h("div",{class:"msum"+(cls?" "+cls:"")},h("span",{text:label}),h("b",{text:val})))}
+  if(m.base)line("المبلغ الأساسي",fmt(m.base));
+  if(m.plus&&(m.base||m.minus))line(m.base?"إضافات":"المجموع","+"+fmt(m.plus));
+  if(m.minus)line("خصومات","−"+fmt(m.minus));
+  line(totalLabel(l,m),fmt(m.total),"total");
+  var mine=S.tasks.filter(function(t){return t.listId===l.id}).sort(function(a,b){return (a.createdAt||0)-(b.createdAt||0)});
+  if(!mine.length)page.appendChild(h("p",{class:"note",text:"الورقة فاضية. اكتب أول بند تحت، مثلاً: ورق 350، أو: اتخصم 500 قسط."}));
+  var ul=h("ul");
+  mine.forEach(function(t){
+    var a=+t.amount||0,d=new Date(t.createdAt||Date.now());
+    ul.appendChild(h("li",{class:"row"+(t.done?" done":"")+(S.fresh===t.id?" fresh":"")},
+      h("button",{class:"chk","aria-pressed":t.done?"true":"false","aria-label":(t.done?"رجّع: ":"اتقفل: ")+t.text,on:{click:function(){toggle(t)}}},h("span")),
+      h("button",{class:"txt-btn","aria-label":"عدّل: "+t.text,on:{click:function(){moneySheet(t)}}},t.text,
+        h("small",{class:"due prog",text:d.getDate()+"/"+(d.getMonth()+1)})),
+      h("span",{class:"amt"+(a<0?" neg":""),text:(a<0?"−":"")+fmt(Math.abs(a))})));
+  });
+  page.appendChild(ul);
+}
+function moneySheet(t){
+  var a=+t.amount||0;
+  var input=h("input",{id:"mText",type:"text",value:t.text});
+  var amt=h("input",{id:"mAmt",type:"number",class:"ltr",inputmode:"decimal",step:"any",min:"0",value:String(Math.abs(a))});
+  var sel=h("select",{id:"mSign"},h("option",{value:"1",text:"إضافة (+)"}),h("option",{value:"-1",text:"خصم (−)"}));
+  sel.value=a<0?"-1":"1";
+  openSheet(h("form",{class:"sheet",on:{submit:function(e){
+    e.preventDefault();var v=input.value.trim(),n=Math.abs(parseFloat(latin(amt.value)));
+    if(!v||isNaN(n)){toast("اكتب الوصف والمبلغ.");return}
+    var na=n*(+sel.value),p={};
+    if(v!==t.text)p.text=v;if(na!==a)p.amount=na;
+    if(Object.keys(p).length)patch("tasks",t.id,p);closeSheet();
+  }}},
+    h("h3",{text:"تعديل البند"}),
+    h("label",{for:"mText"},"الوصف",input),
+    h("label",{for:"mAmt"},"المبلغ",amt),
+    h("label",{for:"mSign"},"النوع",sel),
+    h("div",{class:"btns"},
+      h("button",{type:"submit",class:"btn main",text:"احفظ"}),
+      twoTap("امسح","متأكد؟",function(){del("tasks",[t.id])}),
+      h("button",{type:"button",class:"btn",text:"إلغاء",on:{click:closeSheet}}))),true);
+}
 function listSheet(l){
-  var input=h("input",{id:"listName",type:"text",maxlength:"40",value:l?l.name:"",placeholder:"مثلاً: مشتريات البيت"});
+  var money=isMoney(l);
+  var input=h("input",{id:"listName",type:"text",maxlength:"40",value:l?l.name:"",placeholder:"مثلاً: ديون المحل، أو اسم شخص"});
+  var kind=h("select",{id:"listKind"},h("option",{value:"notes",text:"ملاحظات ومهام"}),h("option",{value:"money",text:"ورقة حساب (ديون، مصاريف، نواقص، حساب شخص)"}));
+  var baseIn=h("input",{id:"listBase",type:"number",class:"ltr",inputmode:"decimal",step:"any",value:l&&l.base?String(l.base):"",placeholder:"0"});
+  var mode=h("select",{id:"listMode"},h("option",{value:"add",text:"يتجمع (ديون، نواقص، حساب شخص)"}),h("option",{value:"sub",text:"يتخصم من المبلغ الأساسي (مصاريف)"}));
+  mode.value=l&&l.mode==="sub"?"sub":"add";
+  var extra=h("div",{style:"display:flex;flex-direction:column;gap:12px",hidden:!money},
+    h("label",{for:"listBase"},"المبلغ الأساسي (اختياري)",baseIn),
+    h("label",{for:"listMode"},"البند اللي تكتبه من غير كلمة خصم أو زيادة",mode),
+    h("p",{text:"كلمات زي «اتخصم، دفع، سدد، صرفت» بتخصم. و«زود، استلف، عليه» بتجمع. واللي تعلّم عليه مابيتحسبش."}));
+  kind.addEventListener("change",function(){extra.hidden=kind.value!=="money"});
   openSheet(h("form",{class:"sheet",on:{submit:function(e){
     e.preventDefault();var v=input.value.trim();if(!v)return;
-    if(l)patch("lists",l.id,{name:v});else addList(v);closeSheet();
+    var isM=l?money:kind.value==="money",b=parseFloat(latin(baseIn.value))||0;
+    if(l){
+      var p={};if(v!==l.name)p.name=v;
+      if(isM){if(b!==(+l.base||0))p.base=b;if(mode.value!==(l.mode||"add"))p.mode=mode.value}
+      if(Object.keys(p).length)patch("lists",l.id,p);
+    }else addList(v,isM?{kind:"money",base:b,mode:mode.value}:null);
+    closeSheet();
   }}},
-    h("h3",{text:l?"تعديل اللستة":"لستة جديدة"}),
-    h("label",{for:"listName"},"اسم اللستة",input),
+    h("h3",{text:l?"تعديل الصفحة":"صفحة جديدة"}),
+    h("label",{for:"listName"},"اسم الصفحة",input),
+    l?null:h("label",{for:"listKind"},"نوع الصفحة",kind),
+    extra,
     h("div",{class:"btns"},
-      h("button",{type:"submit",class:"btn main",text:l?"احفظ الاسم":"اعمل اللستة"}),
-      l?twoTap("امسح اللستة","متأكد؟ هتتمسح بكل اللي فيها",function(){deleteList(l.id)}):null,
+      h("button",{type:"submit",class:"btn main",text:l?"احفظ":"اعمل الصفحة"}),
+      l?twoTap("امسح الصفحة","متأكد؟ هتتمسح بكل اللي فيها",function(){deleteList(l.id)}):null,
       h("button",{type:"button",class:"btn",text:"إلغاء",on:{click:closeSheet}}))));
 }
+
 function taskSheet(t){
   var input=h("input",{id:"taskText",type:"text",value:t.text});
   var sel=h("select",{id:"taskList"});
@@ -790,7 +915,7 @@ function aiSheet(l){
   var b1,b2;
   function run(kind){
     if(!mine.length){out.hidden=false;out.textContent="اللستة فاضية، مفيش حاجة تتلخص.";return}
-    var body=mine.map(function(t){return (l?"":"("+(names[t.listId]||"")+") ")+(t.done?"[خلصت] ":"[لسه] ")+t.text}).join("\n");
+    var body=mine.map(function(t){return (l?"":"("+(names[t.listId]||"")+") ")+(t.done?"[خلصت] ":"[لسه] ")+t.text+(t.amount!=null?" (المبلغ: "+t.amount+")":"")}).join("\n")+(l&&isMoney(l)?"\nدي ورقة حساب. المبلغ الأساسي: "+(+l.base||0)+"، والباقي دلوقتي: "+moneyTotals(l).total:"");
     var ask=kind==="sum"
       ?"لخّص لستة الملاحظات دي في كام سطر قصير بالعامية المصرية: إيه أهم اللي فيها، إيه اللي خلص وإيه اللي لسه."
       :"حلّل لستة الملاحظات دي بالعامية المصرية: رتّب اللي لسه ماخلصش حسب الأولوية مع سبب قصير لكل واحدة، جمّع المتشابه، ونبّه لو فيه حاجة ناقصة أو مش واضحة، واقترح أول خطوة أبدأ بيها.";
@@ -891,8 +1016,8 @@ function assistant(text){
     var ids=keywordFind(text);
     show({reply:(ids.length?"دول اللي فيهم نفس الكلمة لحد ما Gemini يرد:":"لسه بفكر، ثواني…"),taskIds:ids});
   },4000);
-  var data=JSON.stringify({lists:S.lists.map(function(l){return {id:l.id,name:l.name}}),
-    tasks:S.tasks.map(function(t){return {id:t.id,listId:t.listId,text:t.text,done:!!t.done}})});
+  var data=JSON.stringify({lists:S.lists.map(function(l){return isMoney(l)?{id:l.id,name:l.name,kind:"money",base:+l.base||0,total:moneyTotals(l).total}:{id:l.id,name:l.name}}),
+    tasks:S.tasks.map(function(t){var o={id:t.id,listId:t.listId,text:t.text,done:!!t.done};if(t.amount!=null)o.amount=t.amount;return o})});
   var nowD=new Date();
   gemini([{text:"الوقت دلوقتي عند صاحب النوتة: "+toInput(nowD.getTime())+" ("+nowD.toLocaleDateString("ar-EG",{weekday:"long"})+"). لو قال بكرة أو يوم معين أو الساعة كذا احسب الميعاد من الوقت ده، ولو قال فكّرني يبقى طلب إضافة ملاحظة بميعاد، ولو ماحددش ساعة خليها 09:00.\n"+"إنت مساعد جوه نوتة مهام شخصية. دي كل اللستات والملاحظات بصيغة JSON:\n"+data+"\n\nطلب صاحب النوتة: «"+text+"»\n\nافهم الطلب ورجّع JSON بس من غير أي كلام تاني بالشكل ده:\n{\"reply\":\"رد قصير بالعامية المصرية يجاوب على الطلب أو يشرح اللي لقيته\",\"taskIds\":[\"id لكل ملاحظة موجودة ليها علاقة بالطلب\"],\"listName\":\"اسم قصير مناسب للستة تجمعهم لو الطلب تجميع، وإلا سيبه فاضي\",\"newTasks\":[{\"listId\":\"id لستة موجودة\",\"text\":\"نص ملاحظة جديدة\",\"due\":\"YYYY-MM-DDTHH:mm بالتوقيت المحلي لو اتذكر ميعاد، وإلا فاضي\"}]}\nقواعد: في taskIds دوّر بالمعنى مش بالحرف، يعني لو طلب مهام شخص أو عميل أو موضوع هات كل اللي يخصه حتى لو الاسم مكتوب بشكل مختلف أو فيه غلطة إملائية. newTasks تتملي بس لو طلب صريح إنه يضيف حاجة، واختار أنسب لستة موجودة. استخدم الـ id زي ما هو بالظبط."}])
   .then(function(t){
@@ -911,7 +1036,7 @@ var base="",listening=false,rec=null,session="",mr=null;
 var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 function join(a,b){return a&&b?a+" "+b:(a||b||"")}
 function hint(msg){$("hint").textContent=msg||"";$("hint").hidden=!msg}
-function chip(){$("split").hidden=S.cur===HOME||$("text").value.trim().split(/\s+/).length<7}
+function chip(){$("split").hidden=S.cur===HOME||isMoney(curList())||$("text").value.trim().split(/\s+/).length<7}
 function micState(on){
   listening=on;$("mic").classList.toggle("on",on);
   $("mic").setAttribute("aria-label",on?"وقّف التسجيل":"سجّل صوت");
@@ -923,6 +1048,14 @@ $("form").addEventListener("submit",function(e){
   var v=$("text").value.trim();if(!v)return;
   if(listening)stopVoice();
   if(S.cur===HOME){assistant(v);return}
+  var ml=curList();
+  if(isMoney(ml)){
+    var pm=parseMoney(v,ml.mode);
+    if(pm){addEntry(ml,pm.amount,pm.label);$("text").value="";base="";S.fresh=null;chip()}
+    else if(LS.get("nota.gkey"))aiMoney(v,ml);
+    else toast("اكتب المبلغ بالأرقام، مثلاً: ورق 350");
+    return;
+  }
   addTask(v);$("text").value="";base="";S.fresh=null;chip();
 });
 $("split").addEventListener("click",function(){
