@@ -170,6 +170,7 @@ ul{list-style:none;margin:0;padding:0}
 .whenchips{display:flex;flex-wrap:wrap;gap:6px}
 .wchip{font-size:13px;padding:6px 12px;border:1px solid var(--rule);border-radius:16px;color:var(--accent);background:var(--paper)}
 .wchip.off{color:var(--muted)}
+.wchip.grab{align-self:flex-start;border-color:var(--accent);font-weight:500}
 .whenout{font-size:13px;color:var(--accent);min-height:18px}
 .pickrow{display:flex;align-items:center;gap:8px}
 .pickrow span{font-size:13px;color:var(--muted);flex:0 0 auto}
@@ -733,7 +734,7 @@ function whenField(initial){
   paint();
   box.appendChild(txt);box.appendChild(chips);box.appendChild(out);
   box.appendChild(h("div",{class:"pickrow"},h("span",{text:"أو من التقويم"}),pick));
-  return {el:box,get:function(){return val}};
+  return {el:box,get:function(){return val},set:function(v){txt.value="";set(v)}};
 }
 
 function calUrl(t,ms){
@@ -930,7 +931,8 @@ function taskSheet(t){
   var input=h("input",{id:"taskText",type:"text",value:t.text});
   var sel=h("select",{id:"taskList"});
   S.lists.forEach(function(l){var o=h("option",{value:l.id,text:l.name});if(l.id===t.listId)o.selected=true;sel.appendChild(o)});
-  var sub=!!parentOf(t);
+  var sub=!!parentOf(t),pw=t.due?null:parseWhenFull(t.text,null,{auto:true});
+  if(pw&&!pw.explicit)pw=null;
   var when=whenField(t.due||null);
   function dueMs(){return when.get()}
   openSheet(h("form",{class:"sheet",on:{submit:function(e){
@@ -944,6 +946,8 @@ function taskSheet(t){
     h("h3",{text:sub?"تعديل النقطة الفرعية":"تعديل الملاحظة"}),
     h("label",{for:"taskText"},"النص",input),
     sub?null:h("label",{for:"taskList"},"في لستة",sel),
+    pw?h("button",{type:"button",class:"wchip grab",text:"خد الميعاد من النص: "+fmtDue(pw.ms),
+      on:{click:function(e){when.set(pw.ms);if(pw.rest.length>2)input.value=pw.rest;e.target.remove()}}}):null,
     h("label",{for:"taskWhen"},"ميعاد (اختياري)",when.el),
     h("div",{class:"btns"},
       h("button",{type:"button",class:"btn",text:"تذكير في تقويم جوجل",style:"color:var(--accent)",on:{click:function(){
