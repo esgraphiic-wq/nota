@@ -243,7 +243,7 @@ html,body{overflow:hidden;overscroll-behavior:none}
 (function(){
 "use strict";
 var COLORS=5,FBV="https://www.gstatic.com/firebasejs/12.9.0/";
-var BUILD="2026-11-21 cold";
+var BUILD="2026-11-21 summary";
 var HOME="__home",S={lists:[],tasks:[],cur:HOME,fresh:null};
 var FB=null,cloud=null,migrated=false;
 var $=function(id){return document.getElementById(id)};
@@ -307,7 +307,7 @@ function readLocal(){
   return {lists:[{id:"shop",name:"المحل",color:0,order:1},{id:"wishes",name:"الأمنيات",color:1,order:2},{id:"abu-fahd",name:"شغل أبو فهد",color:2,order:3}],tasks:[]};
 }
 function useLocal(){var d=readLocal();S.lists=d.lists;S.tasks=d.tasks}
-function saveLocal(){LS.set("nota.data",JSON.stringify({lists:S.lists,tasks:S.tasks}))}
+function saveLocal(){LS.set("nota.data",JSON.stringify({lists:S.lists,tasks:S.tasks.filter(function(t){return !t._tmp})}))}
 
 /* ---------- storage: Firebase ---------- */
 var DEFAULT_CFG={apiKey:"AIzaSyCKuWX_cu78l_e3h85Av6Jn0CukDF98kHE",authDomain:"nota-islam.firebaseapp.com",projectId:"nota-islam",storageBucket:"nota-islam.firebasestorage.app",messagingSenderId:"782390960025",appId:"1:782390960025:web:198c2a8c843aff3f62fd08"};
@@ -521,6 +521,13 @@ function renderHome(page){
       h("button",{class:"ai",text:"لخّص كل حاجة",on:{click:function(){aiSheet(null)}}}),
       h("button",{text:"رتّب الصفحات",on:{click:orderSheet}}))));
   page.appendChild(h("p",{class:"note",text:S.lists.length?(open?"قدامك "+open+" حاجة لسه ماخلصتش.":"مفيش حاجة مستنياك. كله خلص."):"مفيش لستات لسه. دوس + فوق واعمل أول لستة."}));
+  var ds0=daySummary(dayStart(Date.now()));
+  if(ds0.lines.length){
+    var tdy=h("section",{style:"--tc:var(--accent)"},h("div",{class:"hl"},h("span",{class:"name",style:"font-size:24px",text:"ملخص النهارده"}),
+      h("span",{text:ds0.today.length?ds0.today.length+" ميعاد":"من غير مواعيد"})));
+    ds0.lines.forEach(function(x){tdy.appendChild(h("p",{class:"note",style:"margin:2px 0",text:x}))});
+    page.appendChild(tdy);
+  }
   var dues=S.tasks.filter(function(t){return !t.done&&t.due}).sort(function(a,b){return a.due-b.due});
   if(dues.length){
     var late=dues.filter(function(t){return t.due<Date.now()}).length;
@@ -757,6 +764,21 @@ function calUrl(t,ms){
     "&dates="+z(ms)+"/"+z(ms+30*60000)+"&details="+encodeURIComponent("من النوتة");
 }
 function askNotify(){if(NATIVE){nativeSetup().then(nativeExact);return}try{if(window.Notification&&Notification.permission==="default")Notification.requestPermission()}catch(e){}}
+/* ---------- daily summary ---------- */
+function getSumH(){var v=LS.get("nota.sumh");if(v===null||v===undefined||v==="")return 9;var n=parseInt(v,10);return n>=0&&n<=23?n:9}
+function hm(ms){return new Date(ms).toLocaleTimeString("ar-EG-u-nu-latn",{hour:"numeric",minute:"2-digit"})}
+function daySummary(d0){
+  var d1=d0+864e5;
+  var tasks=S.tasks.filter(function(t){return !t.done&&!t._tmp&&!isMoney(listById(t.listId))});
+  var today=tasks.filter(function(t){return t.due&&t.due>=d0&&t.due<d1}).sort(function(a,b){return a.due-b.due});
+  var late=tasks.filter(function(t){return t.due&&t.due<d0});
+  var open=tasks.filter(function(t){return isTop(t)}).length;
+  var lines=[];
+  if(today.length){lines.push("مواعيد اليوم ("+today.length+"):");today.slice(0,6).forEach(function(t){lines.push("• "+hm(t.due)+"  "+t.text)});if(today.length>6)lines.push("و "+(today.length-6)+" كمان")}
+  if(late.length)lines.push("متأخر: "+late.length);
+  if(open)lines.push("مهام مفتوحة: "+open);
+  return{today:today,late:late,open:open,lines:lines};
+}
 /* ---------- ringtones + lead time ---------- */
 var RINGS=[["bell","جرس"],["beep","منبه رقمي"],["melody","نغمة"],["chime","رنين هادي"],["siren","سيرينة (عالية)"]];
 function getRing(){var r=LS.get("nota.ring");return RINGS.some(function(x){return x[0]===r})?r:"bell"}
@@ -789,6 +811,8 @@ function nativeSetup(){
       {id:"done",title:"✓ خلصت",foreground:true},
       {id:"snooze",title:"⏰ بعد 5 دقايق",foreground:true}]}]}));
   }).then(function(){
+    return ok(ln.createChannel({id:"summary",name:"ملخص اليوم",description:"ملخص يومي بالمهام",importance:4,visibility:1,vibration:true}));
+  }).then(function(){
     return Promise.all(RINGS.map(function(r){
       return ok(ln.createChannel({id:"alarm_"+r[0],name:"تنبيهات النوتة - "+r[1],description:"مواعيد المهام",importance:5,visibility:1,vibration:true,lights:true,sound:r[0]+".wav"}));
     }));
@@ -812,7 +836,17 @@ function nativeSync(){
         });
       });
       list.sort(function(a,b){return a.schedule.at-b.schedule.at});
-      list=list.slice(0,60);
+      list=list.slice(0,70);
+      var H=getSumH();
+      if(H>0){
+        for(var i=0;i<7;i++){
+          var d0=dayStart(now)+i*864e5,at=d0+H*3600000;
+          if(at<=now+60000)continue;
+          var sm=daySummary(d0);if(!sm.lines.length)continue;
+          list.push({id:880000000+i,title:"ملخص اليوم",body:sm.lines.slice(0,3).join(" · "),largeBody:sm.lines.join("\n"),summaryText:"النوتة",
+            channelId:"summary",schedule:{at:new Date(at),allowWhileIdle:true},extra:{sum:1}});
+        }
+      }
       return list.length?ln.schedule({notifications:list}):null;
     }).catch(function(){});
   },800);
@@ -825,6 +859,10 @@ function nativeListen(){
       var t=S.tasks.filter(function(x){return x.id===tid})[0];
       if(tid==="__test"){
         if(!t){t={id:"__test",text:"ده تنبيه تجريبي",done:false};S.tasks.push(t);setTimeout(function(){S.tasks=S.tasks.filter(function(x){return x.id!=="__test"})},120000)}
+        showAlarm([t],true);return;
+      }
+      if(!t&&tid&&tid!=="none"&&ev.actionId==="tap"){
+        t={id:tid,text:(ev.notification&&ev.notification.body)||"ميعاد",done:false,_tmp:true};S.tasks.push(t);
         showAlarm([t],true);return;
       }
       if(t&&ev.actionId!=="done"&&ev.actionId!=="snooze"){showAlarm([t],!t.done);return}
@@ -932,7 +970,7 @@ function showAlarm(list,loud,notes){
       alarm.notes[t.id]?h("div",{class:"alarmnote",text:alarm.notes[t.id]}):null,
       h("div",{class:"alarmtxt",text:t.text}),
       h("div",{class:"alarmbtns"},
-        h("button",{class:"btn main",text:"خلصت",on:{click:function(){stopRing(true);delete alarm.notes[t.id];actTask(t,{done:true,doneAt:Date.now()});sound(true);showAlarm([],false);afterAlarm()}}}),
+        h("button",{class:"btn main",text:"خلصت",on:{click:function(){stopRing(true);delete alarm.notes[t.id];alarm.ids=alarm.ids.filter(function(x){return x!==t.id});actTask(t,{done:true,doneAt:Date.now()});sound(true);showAlarm([],false);afterAlarm()}}}),
         h("button",{class:"btn",text:"بعد 5 دقايق",on:{click:function(){stopRing(true);delete alarm.notes[t.id];alarm.ids=alarm.ids.filter(function(x){return x!==t.id});actTask(t,{due:Date.now()+5*60000,lead:0});showAlarm([],false);afterAlarm()}}}))));
   });
   box.appendChild(h("div",{class:"alarmbtns"},
@@ -1205,6 +1243,13 @@ function settingsSheet(){
       var sel=h("select",{id:"leadSel"});
       LEADS.forEach(function(x){var o=h("option",{value:String(x[0]),text:x[1]});if(x[0]===getLead())o.selected=true;sel.appendChild(o)});
       sel.addEventListener("change",function(){LS.set("nota.lead",sel.value);nativeSync();toast("اتحفظ")});
+      return sel;
+    })()),
+    h("label",{for:"sumSel"},"ملخص اليوم (إشعار كل صباح)",(function(){
+      var sel=h("select",{id:"sumSel"});
+      [[0,"من غير ملخص"],[6,"6 الصبح"],[7,"7 الصبح"],[8,"8 الصبح"],[9,"9 الصبح"],[10,"10 الصبح"],[12,"12 الضهر"],[18,"6 المغرب"],[21,"9 بالليل"]].forEach(function(x){
+        var o=h("option",{value:String(x[0]),text:x[1]});if(x[0]===getSumH())o.selected=true;sel.appendChild(o)});
+      sel.addEventListener("change",function(){LS.set("nota.sumh",sel.value);nativeSync();toast("اتحفظ")});
       return sel;
     })()),
     h("div",{class:"btns"},

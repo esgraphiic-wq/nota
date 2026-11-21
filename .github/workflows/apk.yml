@@ -31,10 +31,10 @@ jobs:
           s=open(p,encoding="utf8").read()
           k="mBuilder.setContentIntent(pendingIntent);"
           assert k in s, "plugin source changed"
-          s=s.replace(k,k+"\n        mBuilder.setFullScreenIntent(pendingIntent, true).setCategory(NotificationCompat.CATEGORY_ALARM).setPriority(NotificationCompat.PRIORITY_MAX);",1)
+          s=s.replace(k,k+'\n        if (localNotification.getChannelId() != null && localNotification.getChannelId().startsWith("alarm_")) { mBuilder.setFullScreenIntent(pendingIntent, true).setCategory(NotificationCompat.CATEGORY_ALARM).setPriority(NotificationCompat.PRIORITY_MAX); }',1)
           k3="setExactIfPossible(alarmManager, schedule, at.getTime(), pendingIntent);"
           assert k3 in s, "plugin source changed (alarm)"
-          s=s.replace(k3,"alarmManager.setAlarmClock(new AlarmManager.AlarmClockInfo(at.getTime(), pendingIntent), pendingIntent);",1)
+          s=s.replace(k3,'if (request.getChannelId() != null && request.getChannelId().startsWith("alarm_")) { alarmManager.setAlarmClock(new AlarmManager.AlarmClockInfo(at.getTime(), pendingIntent), pendingIntent); } else { setExactIfPossible(alarmManager, schedule, at.getTime(), pendingIntent); }',1)
           open(p,"w",encoding="utf8").write(s)
           PY
           python3 - <<'PY'
