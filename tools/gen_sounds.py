@@ -1,5 +1,5 @@
 import wave, struct, math, random
-SR=22050
+SR=11025
 def note(f,d,shape="sine",vol=0.5,dec=6):
     n=int(SR*d); out=[]
     for i in range(n):
@@ -22,22 +22,22 @@ def mix(seq,total):
 def save(name,buf):
     w=wave.open("sounds/%s.wav"%name,"w"); w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR)
     w.writeframes(b"".join(struct.pack("<h",int(max(-1,min(1,x))*32767)) for x in buf)); w.close()
-T=12
+T=40
 # bell: repeated bell strikes
-save("bell",mix([(k*1.5,note(880,1.4,"bell",0.6,5)) for k in range(8)],T))
+save("bell",mix([(k*1.5,note(880,1.4,"bell",0.6,5)) for k in range(int(T/1.5))],T))
 # beep: classic digital alarm, 4 beeps then pause
 seq=[]
-for r in range(4):
+for r in range(int(T/3)):
     for b in range(4): seq.append((r*3+b*0.22,note(1760,0.12,"square",0.35,0)))
 save("beep",mix(seq,T))
 # melody: rising phrase
 mel=[523,659,784,1047,784,659]; seq=[]
-for r in range(3):
+for r in range(int(T/4)):
     for i,f in enumerate(mel): seq.append((r*4+i*0.4,note(f,0.5,"sine",0.5,4)))
 save("melody",mix(seq,T))
 # chime: soft two-tone
 seq=[]
-for r in range(5): seq+= [(r*2.4,note(1319,1.0,"bell",0.45,5)),(r*2.4+0.5,note(988,1.4,"bell",0.45,5))]
+for r in range(int(T/2.4)): seq+= [(r*2.4,note(1319,1.0,"bell",0.45,5)),(r*2.4+0.5,note(988,1.4,"bell",0.45,5))]
 save("chime",mix(seq,T))
 # siren: loud sweep
 buf=[]; ph=0

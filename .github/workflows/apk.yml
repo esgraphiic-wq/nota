@@ -76,7 +76,7 @@ jobs:
           p="android/app/src/main/AndroidManifest.xml"
           s=open(p,encoding="utf8").read()
           add=""
-          for perm in ["POST_NOTIFICATIONS","VIBRATE","RECEIVE_BOOT_COMPLETED","SCHEDULE_EXACT_ALARM","WAKE_LOCK","USE_FULL_SCREEN_INTENT"]:
+          for perm in ["POST_NOTIFICATIONS","VIBRATE","RECEIVE_BOOT_COMPLETED","SCHEDULE_EXACT_ALARM","USE_EXACT_ALARM","WAKE_LOCK","USE_FULL_SCREEN_INTENT"]:
               line='<uses-permission android:name="android.permission.%s" />'%perm
               if line not in s: add+="    "+line+"\n"
           s=s.replace("</manifest>",add+"</manifest>")
