@@ -93,6 +93,10 @@ jobs:
               m.resize((f,f),Image.LANCZOS).save(R+"mipmap-%s/ic_launcher_foreground.png"%n)
           PY
           sed -i 's/#FFFFFF/#e3e9f3/I' android/app/src/main/res/values/ic_launcher_background.xml || true
+      - name: Version code
+        run: |
+          sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/; s/versionName \"1.0\"/versionName \"1.${{ github.run_number }}\"/" android/app/build.gradle
+          grep -n "versionCode\|versionName" android/app/build.gradle
       - name: Signing key (kept in cache so updates install over the old app)
         id: key
         uses: actions/cache@v4
