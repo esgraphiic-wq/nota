@@ -25,13 +25,16 @@ jobs:
       - name: Capacitor
         run: |
           npm init -y >/dev/null
-          npm i @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7 @capacitor/local-notifications@7
+          npm i @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7 @capacitor/local-notifications@7 @capacitor/app@7
           python3 - <<'PY'
           p="node_modules/@capacitor/local-notifications/android/src/main/java/com/capacitorjs/plugins/localnotifications/LocalNotificationManager.java"
           s=open(p,encoding="utf8").read()
           k="mBuilder.setContentIntent(pendingIntent);"
           assert k in s, "plugin source changed"
           s=s.replace(k,k+"\n        mBuilder.setFullScreenIntent(pendingIntent, true).setCategory(NotificationCompat.CATEGORY_ALARM).setPriority(NotificationCompat.PRIORITY_MAX);",1)
+          k3="setExactIfPossible(alarmManager, schedule, at.getTime(), pendingIntent);"
+          assert k3 in s, "plugin source changed (alarm)"
+          s=s.replace(k3,"alarmManager.setAlarmClock(new AlarmManager.AlarmClockInfo(at.getTime(), pendingIntent), pendingIntent);",1)
           open(p,"w",encoding="utf8").write(s)
           PY
           python3 - <<'PY'

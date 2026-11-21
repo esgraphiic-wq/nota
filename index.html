@@ -243,7 +243,7 @@ html,body{overflow:hidden;overscroll-behavior:none}
 (function(){
 "use strict";
 var COLORS=5,FBV="https://www.gstatic.com/firebasejs/12.9.0/";
-var BUILD="2026-11-21 diag3";
+var BUILD="2026-11-21 leave";
 var HOME="__home",S={lists:[],tasks:[],cur:HOME,fresh:null};
 var FB=null,cloud=null,migrated=false;
 var $=function(id){return document.getElementById(id)};
@@ -833,7 +833,7 @@ function nativeListen(){
       alarm.ids=alarm.ids.filter(function(x){return x!==t.id});delete alarm.notes[t.id];
       var seen={};try{seen=JSON.parse(LS.get("nota.notified")||"{}")}catch(e){}
       Object.keys(seen).forEach(function(k){if(k.indexOf(t.id+"@")===0)delete seen[k]});LS.set("nota.notified",JSON.stringify(seen));
-      showAlarm([],false);
+      showAlarm([],false);alarm.auto=true;afterAlarm();
     }catch(e){}
   });
 }
@@ -874,7 +874,7 @@ function checkUpdate(){
 }
 if(NATIVE){setTimeout(checkUpdate,4000);document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")checkUpdate()})}
 /* ---------- alarm ---------- */
-var alarm={timer:null,ids:[],notes:{},audio:null,stopT:null,want:false};
+var alarm={timer:null,ids:[],notes:{},audio:null,stopT:null,want:false,auto:false};
 function ringOnce(){
   try{
     ac=ac||new (window.AudioContext||window.webkitAudioContext)();
@@ -906,6 +906,16 @@ function startRing(){
   }catch(e){fallback()}
 }
 function resumeRing(){if(alarm.want&&document.getElementById("alarm")&&!alarm.audio&&!alarm.timer)startRing()}
+function leaveApp(){try{var A=Capacitor.Plugins.App;if(A&&A.minimizeApp)A.minimizeApp()}catch(e){}}
+function actTask(t,p){
+  if(t.id==="__test"){S.tasks=S.tasks.filter(function(x){return x.id!=="__test"});return}
+  patch("tasks",t.id,p);
+}
+function afterAlarm(){
+  if(alarm.ids.length)return;
+  var auto=alarm.auto;alarm.auto=false;
+  if(auto&&NATIVE)setTimeout(leaveApp,150);
+}
 function closeAlarm(){stopRing(true);var o=document.getElementById("alarm");if(o)o.remove()}
 function showAlarm(list,loud,notes){
   var old=document.getElementById("alarm");
@@ -920,14 +930,14 @@ function showAlarm(list,loud,notes){
       alarm.notes[t.id]?h("div",{class:"alarmnote",text:alarm.notes[t.id]}):null,
       h("div",{class:"alarmtxt",text:t.text}),
       h("div",{class:"alarmbtns"},
-        h("button",{class:"btn main",text:"خلصت",on:{click:function(){stopRing(true);delete alarm.notes[t.id];patch("tasks",t.id,{done:true,doneAt:Date.now()});sound(true);showAlarm([],false)}}}),
-        h("button",{class:"btn",text:"بعد 5 دقايق",on:{click:function(){stopRing(true);delete alarm.notes[t.id];alarm.ids=alarm.ids.filter(function(x){return x!==t.id});patch("tasks",t.id,{due:Date.now()+5*60000,lead:0});showAlarm([],false)}}}))));
+        h("button",{class:"btn main",text:"خلصت",on:{click:function(){stopRing(true);delete alarm.notes[t.id];actTask(t,{done:true,doneAt:Date.now()});sound(true);showAlarm([],false);afterAlarm()}}}),
+        h("button",{class:"btn",text:"بعد 5 دقايق",on:{click:function(){stopRing(true);delete alarm.notes[t.id];alarm.ids=alarm.ids.filter(function(x){return x!==t.id});actTask(t,{due:Date.now()+5*60000,lead:0});showAlarm([],false);afterAlarm()}}}))));
   });
   box.appendChild(h("div",{class:"alarmbtns"},
     h("button",{class:"btn alarmquiet",text:"اسكت الصوت",on:{click:function(){stopRing(true)}}}),
-    h("button",{class:"btn alarmquiet",text:"اقفل (وسيبها)",on:{click:function(){alarm.ids=[];alarm.notes={};closeAlarm()}}})));
+    h("button",{class:"btn alarmquiet",text:"اقفل (وسيبها)",on:{click:function(){alarm.ids=[];alarm.notes={};closeAlarm();afterAlarm()}}})));
   document.body.appendChild(h("div",{id:"alarm",class:"alarm",role:"alertdialog"},box));
-  if(loud)startRing();
+  if(loud){startRing();if(NATIVE)alarm.auto=true}
   render();
 }
 function notifyOS(t,late,note){
