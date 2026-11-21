@@ -41,15 +41,17 @@ jobs:
           s=s.replace("</manifest>",add+"</manifest>")
           open(p,"w",encoding="utf8").write(s)
           PY
-          R=android/app/src/main/res
-          i=0
-          for d in mdpi:48:108 hdpi:72:162 xhdpi:96:216 xxhdpi:144:324 xxxhdpi:192:432; do
-            IFS=: read n a f <<< "$d"
-            convert icon-512.png -resize ${a}x${a} $R/mipmap-$n/ic_launcher.png
-            convert icon-512.png -resize ${a}x${a} $R/mipmap-$n/ic_launcher_round.png
-            convert icon-maskable.png -resize ${f}x${f} $R/mipmap-$n/ic_launcher_foreground.png
-          done
-          sed -i 's/#FFFFFF/#e3e9f3/I' $R/values/ic_launcher_background.xml || true
+          pip install pillow -q
+          python3 - <<'PY'
+          from PIL import Image
+          R="android/app/src/main/res/"
+          for n,a,f in [("mdpi",48,108),("hdpi",72,162),("xhdpi",96,216),("xxhdpi",144,324),("xxxhdpi",192,432)]:
+              i=Image.open("icon-512.png").convert("RGBA"); m=Image.open("icon-maskable.png").convert("RGBA")
+              i.resize((a,a),Image.LANCZOS).save(R+"mipmap-%s/ic_launcher.png"%n)
+              i.resize((a,a),Image.LANCZOS).save(R+"mipmap-%s/ic_launcher_round.png"%n)
+              m.resize((f,f),Image.LANCZOS).save(R+"mipmap-%s/ic_launcher_foreground.png"%n)
+          PY
+          sed -i 's/#FFFFFF/#e3e9f3/I' android/app/src/main/res/values/ic_launcher_background.xml || true
       - name: Signing key (kept in cache so updates install over the old app)
         id: key
         uses: actions/cache@v4
