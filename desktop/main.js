@@ -82,7 +82,12 @@ else {
     win.setResizable(false);
     applyShape(b);
     sendLayout();
-    setTimeout(() => { if (win && !win.isDestroyed()) { applyShape(b); sendLayout(); } }, 120);
+    setTimeout(() => {
+      if (!win || win.isDestroyed()) return;
+      const a = win.getBounds();
+      if (Math.abs(a.width - b.width) > 2 || Math.abs(a.height - b.height) > 2) { win.setResizable(true); win.setBounds(b); win.setResizable(false); }
+      applyShape(b); sendLayout();
+    }, 120);
   }
 
   function createWindow() {

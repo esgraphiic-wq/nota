@@ -7,7 +7,7 @@
 html,body{height:100%;background:transparent;overflow:hidden;color:var(--ink);user-select:none}
 #app{height:100%;position:relative}
 .stage{position:absolute;inset:0}
-.card{position:absolute;top:8px;bottom:8px;width:384px;display:flex;flex-direction:column;background:var(--paper);border-radius:22px;box-shadow:var(--shadow);border:1px solid rgba(36,71,201,.12);overflow:hidden;position:relative}
+.card{position:absolute;top:8px;bottom:8px;display:flex;flex-direction:column;background:var(--paper);border-radius:22px;box-shadow:var(--shadow);border:1px solid rgba(36,71,201,.12);overflow:hidden;position:relative}
 .card::before{content:"";position:absolute;inset:0;pointer-events:none;border-radius:22px;
   background:repeating-linear-gradient(to bottom,transparent 0,transparent 31px,rgba(36,71,201,.06) 31px,rgba(36,71,201,.06) 32px);opacity:.9}
 .card::after{content:"";position:absolute;top:0;bottom:0;inset-inline-start:34px;width:1.5px;background:rgba(216,51,79,.28);pointer-events:none}
@@ -83,7 +83,7 @@ html,body{height:100%;background:transparent;overflow:hidden;color:var(--ink);us
 .login input:focus{outline:2px solid rgba(36,71,201,.35);border-color:transparent}
 .err{color:var(--pen);font-size:12.5px;text-align:center;min-height:18px}
 
-.side-left .card{left:8px}.side-right .card{right:8px}
+.side-left .card{left:8px;right:90px}.side-right .card{left:90px;right:8px}
 .bubble{position:absolute;width:72px;height:72px;border-radius:50%;cursor:pointer;display:grid;place-items:center;color:#fff;
   background:radial-gradient(circle at 30% 25%,#5b7df0,#2447c9 62%,#1a35a0);
   box-shadow:0 8px 22px rgba(20,32,70,.4),inset 0 2px 0 rgba(255,255,255,.28),inset 0 -3px 8px rgba(0,0,0,.18);
