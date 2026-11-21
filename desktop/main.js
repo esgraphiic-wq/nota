@@ -63,10 +63,10 @@ else {
     bubbleOff = { x: bp.x - x, y: bp.y - y };
     return { x, y, width, height: ph };
   }
-  function applyShape() {
+  function applyShape(bb) {
     if (!win || typeof win.setShape !== "function") return;
     try {
-      const [w, h] = win.getSize();
+      const w = bb ? bb.width : win.getSize()[0], h = bb ? bb.height : win.getSize()[1];
       if (!expanded) return win.setShape([{ x: 0, y: 0, width: w, height: h }]);
       const bx = bubbleOff.x - PAD, by = bubbleOff.y - PAD, pw = w - (B + 2 * PAD) - GAP;
       win.setShape([{ x: bx, y: by, width: B + 2 * PAD, height: B + 2 * PAD }, { x: side === "left" ? 0 : w - pw, y: 0, width: pw, height: h }]);
@@ -77,13 +77,12 @@ else {
   function setExpanded(v) {
     if (!win) return;
     const b = layout(v);
-    applying = true;
     win.setResizable(true);
     win.setBounds(b);
     win.setResizable(false);
-    applyShape();
-    setTimeout(() => { applying = false; }, 150);
+    applyShape(b);
     sendLayout();
+    setTimeout(() => { if (win && !win.isDestroyed()) { applyShape(b); sendLayout(); } }, 120);
   }
 
   function createWindow() {
@@ -98,12 +97,6 @@ else {
     win.webContents.on("did-finish-load", () => { applyShape(); sendLayout(); });
     win.once("ready-to-show", () => win.show());
     win.on("close", (e) => { if (!quitting) { e.preventDefault(); win.hide(); } });
-    win.on("move", () => {
-      if (applying) return;
-      const [x, y] = win.getPosition();
-      settings.bubble = { x: x + bubbleOff.x, y: y + bubbleOff.y };
-      clearTimeout(win._t); win._t = setTimeout(saveSettings, 500);
-    });
     win.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//.test(url)) shell.openExternal(url); return { action: "deny" }; });
   }
 
@@ -117,7 +110,7 @@ else {
   function openNotes() {
     if (appWin && !appWin.isDestroyed()) { if (appWin.isMinimized()) appWin.restore(); appWin.show(); appWin.focus(); return; }
     appWin = new BrowserWindow({
-      width: 1180, height: 820, minWidth: 380, minHeight: 520, title: "النوتة", backgroundColor: "#f6f8fc",
+      width: Math.min(1500, screen.getPrimaryDisplay().workArea.width - 40), height: screen.getPrimaryDisplay().workArea.height - 40, minWidth: 380, minHeight: 520, title: "النوتة", backgroundColor: "#f6f8fc",
       icon: path.join(__dirname, "build", "icon.png"), autoHideMenuBar: true,
       webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, sandbox: true }
     });
@@ -165,7 +158,8 @@ else {
     x.on("click", () => showBubble(true));
     x.show();
   });
-  ipcMain.on("toggle", () => setExpanded(!expanded));
+  let lastToggle = 0;
+  ipcMain.on("toggle", () => { const n = Date.now(); if (n - lastToggle < 250) return; lastToggle = n; setExpanded(!expanded); });
   ipcMain.on("set-expanded", (_e, v) => setExpanded(!!v));
   ipcMain.on("drag-start", () => { if (win) dragStart = { b: win.getBounds() }; });
   ipcMain.on("drag-move", (_e, dx, dy) => {
@@ -176,6 +170,8 @@ else {
     x += clamp(bx, wa.x, wa.x + wa.width - B) - bx;
     y += clamp(by, wa.y, wa.y + wa.height - B) - by;
     win.setPosition(x, y);
+    settings.bubble = { x: x + bubbleOff.x, y: y + bubbleOff.y };
+    clearTimeout(win._t); win._t = setTimeout(saveSettings, 400);
   });
   ipcMain.on("bubble-menu", () => { if (win) trayMenu().popup({ window: win }); });
   ipcMain.on("hide-bubble", () => { if (win) win.hide(); });
