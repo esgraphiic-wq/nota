@@ -1,0 +1,36 @@
+{
+  "name": "nota-desktop",
+  "version": "1.0.0",
+  "description": "Nota desktop widget",
+  "main": "main.js",
+  "author": "Islam Graphic",
+  "scripts": {
+    "build:web": "node build.js",
+    "dist": "node build.js && electron-builder --win nsis --publish never"
+  },
+  "build": {
+    "appId": "com.islamgraphic.nota.desktop",
+    "productName": "Nota Widget",
+    "directories": { "output": "release" },
+    "files": ["main.js", "preload.js", "dist/**", "build/icon.png", "package.json"],
+    "win": { "target": "nsis", "icon": "build/icon.png" },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "runAfterFinish": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Nota Widget"
+    }
+  },
+  "dependencies": {
+    "firebase": "12.9.0",
+    "@fontsource/aref-ruqaa": "^5.0.0",
+    "@fontsource/readex-pro": "^5.0.0"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.24.0"
+  }
+}
