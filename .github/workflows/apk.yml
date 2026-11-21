@@ -26,10 +26,36 @@ jobs:
         run: |
           npm init -y >/dev/null
           npm i @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7 @capacitor/local-notifications@7
+          python3 - <<'PY'
+          p="node_modules/@capacitor/local-notifications/android/src/main/java/com/capacitorjs/plugins/localnotifications/LocalNotificationManager.java"
+          s=open(p,encoding="utf8").read()
+          k="mBuilder.setContentIntent(pendingIntent);"
+          assert k in s, "plugin source changed"
+          s=s.replace(k,k+"\n        mBuilder.setFullScreenIntent(pendingIntent, true).setCategory(NotificationCompat.CATEGORY_ALARM).setPriority(NotificationCompat.PRIORITY_MAX);",1)
+          open(p,"w",encoding="utf8").write(s)
+          PY
           cat > capacitor.config.json <<'JSON'
           {"appId":"com.islamgraphic.nota","appName":"النوتة","webDir":"www","server":{"androidScheme":"https"},"android":{"backgroundColor":"#f6f8fc"}}
           JSON
           npx cap add android
+          cat > android/app/src/main/java/com/islamgraphic/nota/MainActivity.java <<'JAVA'
+          package com.islamgraphic.nota;
+          import android.content.Intent;
+          import android.os.Bundle;
+          import android.view.WindowManager;
+          import com.getcapacitor.BridgeActivity;
+          public class MainActivity extends BridgeActivity {
+            private void alarmFlags(Intent i) {
+              if (i != null && i.hasExtra("LocalNotificationId")) {
+                if (android.os.Build.VERSION.SDK_INT >= 27) { setShowWhenLocked(true); setTurnScreenOn(true); }
+                else getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED | WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
+                getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+              }
+            }
+            @Override public void onCreate(Bundle b) { super.onCreate(b); alarmFlags(getIntent()); }
+            @Override protected void onNewIntent(Intent i) { super.onNewIntent(i); alarmFlags(i); }
+          }
+          JAVA
           npx cap sync android
       - name: Permissions and icons
         run: |

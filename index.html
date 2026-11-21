@@ -243,7 +243,7 @@ html,body{overflow:hidden;overscroll-behavior:none}
 (function(){
 "use strict";
 var COLORS=5,FBV="https://www.gstatic.com/firebasejs/12.9.0/";
-var BUILD="2026-11-21 rings";
+var BUILD="2026-11-21 fullscreen";
 var HOME="__home",S={lists:[],tasks:[],cur:HOME,fresh:null};
 var FB=null,cloud=null,migrated=false;
 var $=function(id){return document.getElementById(id)};
@@ -876,7 +876,9 @@ function showAlarm(list,loud,notes){
         h("button",{class:"btn main",text:"خلصت",on:{click:function(){stopRing();delete alarm.notes[t.id];patch("tasks",t.id,{done:true,doneAt:Date.now()});sound(true);showAlarm([],false)}}}),
         h("button",{class:"btn",text:"بعد 5 دقايق",on:{click:function(){stopRing();delete alarm.notes[t.id];alarm.ids=alarm.ids.filter(function(x){return x!==t.id});patch("tasks",t.id,{due:Date.now()+5*60000,lead:0});showAlarm([],false)}}}))));
   });
-  box.appendChild(h("button",{class:"btn alarmquiet",text:"اسكت الصوت",on:{click:function(){stopRing()}}}));
+  box.appendChild(h("div",{class:"alarmbtns"},
+    h("button",{class:"btn alarmquiet",text:"اسكت الصوت",on:{click:function(){stopRing()}}}),
+    h("button",{class:"btn alarmquiet",text:"اقفل (وسيبها)",on:{click:function(){alarm.ids=[];alarm.notes={};closeAlarm()}}})));
   document.body.appendChild(h("div",{id:"alarm",class:"alarm",role:"alertdialog"},box));
   if(loud)startRing();
   render();
