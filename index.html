@@ -243,7 +243,7 @@ html,body{overflow:hidden;overscroll-behavior:none}
 (function(){
 "use strict";
 var COLORS=5,FBV="https://www.gstatic.com/firebasejs/12.9.0/";
-var BUILD="2026-11-21 leave";
+var BUILD="2026-11-21 cold";
 var HOME="__home",S={lists:[],tasks:[],cur:HOME,fresh:null};
 var FB=null,cloud=null,migrated=false;
 var $=function(id){return document.getElementById(id)};
@@ -344,7 +344,8 @@ function onUser(u){
       if(got.lists&&got.tasks){
         if(snap.metadata.fromCache)setSync("","من غير نت");
         else setSync("ok",snap.metadata.hasPendingWrites?"بيحفظ…":"متزامن");
-        render();
+        S.loaded=true;
+        render();checkDue();
       }
     },function(e){setSync("bad",e&&e.code==="permission-denied"?"راجع قواعد Firestore":"الاتصال اتقطع")}));
   }
@@ -362,15 +363,15 @@ function upload(){
 }
 
 /* ---------- data actions ---------- */
-function put(kind,id,data){
+function put(kind,id,data){S.touched=true;
   if(isCloud()){FB.fs.setDoc(ref(kind,id),data).catch(fail);return}
   var o=Object.assign({id:id},data);S[kind].push(o);saveLocal();render();
 }
-function patch(kind,id,p){
+function patch(kind,id,p){S.touched=true;
   if(isCloud()){FB.fs.updateDoc(ref(kind,id),p).catch(fail);return}
   S[kind].forEach(function(x){if(x.id===id)Object.assign(x,p)});saveLocal();render();
 }
-function del(kind,ids){
+function del(kind,ids){S.touched=true;
   if(isCloud()){ids.forEach(function(id){FB.fs.deleteDoc(ref(kind,id)).catch(fail)});return}
   S[kind]=S[kind].filter(function(x){return ids.indexOf(x.id)<0});saveLocal();render();
 }
@@ -795,6 +796,7 @@ function nativeSetup(){
 }
 function nativeSync(){
   if(!NATIVE||!LN())return;
+  if(!S.loaded&&!S.touched&&!S.tasks.length)return;
   clearTimeout(nativeT);
   nativeT=setTimeout(function(){
     var ln=LN(),now=Date.now(),ch="alarm_"+getRing();
@@ -896,7 +898,7 @@ function stopRing(user){
   if(user){alarm.want=false;killNative()}
 }
 function startRing(){
-  stopRing();alarm.want=true;vib();
+  stopRing();alarm.want=true;vib();killNative();
   var fallback=function(){ringOnce();var n=0;alarm.timer=setInterval(function(){if(++n>25){stopRing();return}ringOnce();vib()},2200)};
   try{
     var a=new Audio("sounds/"+getRing()+".wav");a.loop=true;alarm.audio=a;
