@@ -1,10 +1,10 @@
 const { app, BrowserWindow, Tray, Menu, Notification, ipcMain, screen, shell, nativeImage } = require("electron");
 const path = require("path"), fs = require("fs"), http = require("http");
 
-const DEFAULTS = { autostart: true, notifications: true, summaryHour: 9, pinned: true, bubble: null };
+const DEFAULTS = { autostart: true, notifications: true, summaryHour: 9, pinned: true, widget: "show", bubble: null };
 const B = 72, PAD = 4, PANEL_W = 392, GAP = 6;
 let win = null, appWin = null, tray = null, settings = { ...DEFAULTS }, quitting = false, port = 0;
-let expanded = false, side = "left", bubbleOff = { x: PAD, y: PAD }, dragStart = null;
+let taskCount = -1, expanded = false, side = "left", bubbleOff = { x: PAD, y: PAD }, dragStart = null;
 
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 else {
@@ -100,11 +100,18 @@ else {
     if (settings.pinned) win.setAlwaysOnTop(true, "floating");
     win.loadURL(`http://127.0.0.1:${port}/index.html`);
     win.webContents.on("did-finish-load", () => { applyShape(); sendLayout(); });
-    win.once("ready-to-show", () => win.show());
+    win.once("ready-to-show", () => applyWidget());
     win.on("close", (e) => { if (!quitting) { e.preventDefault(); win.hide(); } });
     win.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//.test(url)) shell.openExternal(url); return { action: "deny" }; });
   }
 
+  function setWidget(m) { settings.widget = m; saveSettings(); applyWidget(); }
+  function applyWidget() {
+    if (!win || win.isDestroyed()) return;
+    const want = settings.widget === "show" || (settings.widget === "tasks" && taskCount !== 0);
+    if (want && !win.isVisible()) win.showInactive();
+    if (!want) { if (expanded) setExpanded(false); if (win.isVisible()) win.hide(); }
+  }
   function showBubble(openPanel) {
     if (!win) return;
     if (!win.isVisible()) win.show();
@@ -127,7 +134,11 @@ else {
 
   function trayMenu() {
     return Menu.buildFromTemplate([
-      { label: "إظهار الفقاعة", click: () => showBubble(false) },
+      { label: "الودجت (الفقاعة)", submenu: [
+        { label: "يظهر دايماً", type: "radio", checked: settings.widget === "show", click: () => setWidget("show") },
+        { label: "يظهر لما يبقى فيه مهام النهارده", type: "radio", checked: settings.widget === "tasks", click: () => setWidget("tasks") },
+        { label: "مخفي", type: "radio", checked: settings.widget === "hide", click: () => setWidget("hide") }
+      ] },
       { label: "عرض مهام اليوم", click: () => showBubble(true) },
       { label: "فتح النوتة", click: openNotes },
       { type: "separator" },
@@ -141,17 +152,18 @@ else {
     const img = nativeImage.createFromPath(path.join(__dirname, "build", "icon.png")).resize({ width: 32, height: 32 });
     tray = new Tray(img);
     tray.setToolTip("النوتة");
-    tray.on("click", () => { if (win && win.isVisible()) win.hide(); else showBubble(false); });
+    tray.on("click", () => openNotes());
     tray.on("right-click", () => tray.popUpContextMenu(trayMenu()));
   }
 
-  app.on("second-instance", () => showBubble(true));
+  app.on("second-instance", () => openNotes());
   app.whenReady().then(async () => {
     loadSettings();
     applyAutostart();
     try { port = await serve(); } catch (e) { app.quit(); return; }
     createWindow();
     buildTray();
+    if (!process.argv.includes("--autostart")) openNotes();
   });
   app.on("before-quit", () => { quitting = true; });
   app.on("window-all-closed", () => {});
@@ -160,7 +172,7 @@ else {
   ipcMain.on("notify", (_e, n) => {
     if (!settings.notifications || !Notification.isSupported()) return;
     const x = new Notification({ title: String(n.title || "النوتة"), body: String(n.body || ""), silent: false });
-    x.on("click", () => showBubble(true));
+    x.on("click", () => { if (settings.widget === "hide") openNotes(); else showBubble(true); });
     x.show();
   });
   let lastToggle = 0;
@@ -179,14 +191,16 @@ else {
     clearTimeout(win._t); win._t = setTimeout(saveSettings, 400);
   });
   ipcMain.on("bubble-menu", () => { if (win) trayMenu().popup({ window: win }); });
-  ipcMain.on("hide-bubble", () => { if (win) win.hide(); });
+  ipcMain.on("hide-bubble", () => setWidget("hide"));
+  ipcMain.on("task-count", (_e, n) => { taskCount = +n || 0; if (settings.widget === "tasks") applyWidget(); });
   ipcMain.on("quit", () => { quitting = true; app.quit(); });
   ipcMain.on("open-app", openNotes);
-  ipcMain.handle("get-settings", () => ({ autostart: settings.autostart, notifications: settings.notifications, summaryHour: settings.summaryHour, pinned: settings.pinned }));
+  ipcMain.handle("get-settings", () => ({ autostart: settings.autostart, notifications: settings.notifications, summaryHour: settings.summaryHour, pinned: settings.pinned, widget: settings.widget }));
   ipcMain.handle("set-setting", (_e, k, v) => {
-    if (!["autostart", "notifications", "summaryHour", "pinned"].includes(k)) return;
+    if (!["autostart", "notifications", "summaryHour", "pinned", "widget"].includes(k)) return;
     settings[k] = v; saveSettings();
     if (k === "autostart") applyAutostart();
+    if (k === "widget") applyWidget();
     if (k === "pinned" && win) win.setAlwaysOnTop(!!v, "floating");
     return true;
   });

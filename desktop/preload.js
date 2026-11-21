@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("nota", {
   dragStart: () => ipcRenderer.send("drag-start"),
   dragMove: (dx, dy) => ipcRenderer.send("drag-move", dx, dy),
   bubbleMenu: () => ipcRenderer.send("bubble-menu"),
+  taskCount: (n) => ipcRenderer.send("task-count", n),
   hideBubble: () => ipcRenderer.send("hide-bubble"),
   quit: () => ipcRenderer.send("quit"),
   openApp: () => ipcRenderer.send("open-app"),

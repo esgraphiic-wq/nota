@@ -11,7 +11,7 @@ const CFG = {
 };
 const DEMO = /[?&]demo/.test(location.search);
 function DEMO_EXP() { return /[?&]open/.test(location.search); }
-const API = window.nota || { toggle() { S.expanded = !S.expanded; render(); }, setExpanded(v) { S.expanded = !!v; render(); }, onLayout() {}, dragStart() {}, dragMove() {}, bubbleMenu() {}, hideBubble() {}, openApp() { window.open("/app.html"); }, notify: (n) => console.log("notify", n), hide() {}, quit() {}, getSettings: async () => ({ autostart: true, notifications: true, summaryHour: 9, pinned: false }), setSetting: async () => true, onVisible() {} };
+const API = window.nota || { taskCount() {}, toggle() { S.expanded = !S.expanded; render(); }, setExpanded(v) { S.expanded = !!v; render(); }, onLayout() {}, dragStart() {}, dragMove() {}, bubbleMenu() {}, hideBubble() {}, openApp() { window.open("/app.html"); }, notify: (n) => console.log("notify", n), hide() {}, quit() {}, getSettings: async () => ({ autostart: true, notifications: true, summaryHour: 9, pinned: false }), setSetting: async () => true, onVisible() {} };
 
 /* ---------------- state ---------------- */
 const S = { expanded: DEMO_EXP(), side: "left", bubbleTop: 4, bubbleLeft: 4, confirm: false, user: null, ready: false, lists: [], tasks: [], fromCache: false, openSubs: new Set(), fading: new Set(), panel: false, settings: { autostart: true, notifications: true, summaryHour: 9, pinned: false }, loginErr: "", wisdomShift: 0 };
@@ -222,7 +222,9 @@ function finish(el, t) {
   setTimeout(() => el.classList.add("gone"), 650);
   setTimeout(() => { S.fading.delete(t.id); S.openSubs.delete(t.id); el.remove(); updateBadge(); }, 1200);
 }
+function reportCount() { if (S.user && S.ready) API.taskCount(groups().filter((g) => !g.t.done).length); }
 function updateBadge() {
+  reportCount();
   const left = groups().filter((g) => !g.t.done).length, b = document.querySelector(".badge"), bb = document.querySelector(".bb");
   if (b) { b.textContent = String(left); b.classList.toggle("zero", !left); }
   if (bb) { bb.textContent = left ? String(left) : "✓"; bb.classList.toggle("zero", !left); }
@@ -250,6 +252,8 @@ function panelView() {
   return h("div", { class: "panel nodrag" }, h("h3", { text: "الإعدادات" }),
     h("div", { class: "opt" }, h("span", { text: "يفتح مع تشغيل الويندوز" }), sw("autostart")),
     h("div", { class: "opt" }, h("span", { text: "إشعارات المواعيد" }), sw("notifications")),
+    h("div", { class: "opt" }, h("span", { text: "ظهور الفقاعة" }), h("select", { onchange: async (e) => { S.settings.widget = e.target.value; await API.setSetting("widget", e.target.value); } },
+      [["show", "دايماً"], ["tasks", "لما يبقى فيه مهام"], ["hide", "مخفية"]].map((x) => h("option", { value: x[0], text: x[1], selected: x[0] === (S.settings.widget || "show") })))),
     h("div", { class: "opt" }, h("span", { text: "الفقاعة دايماً فوق النوافذ" }), sw("pinned")),
     h("div", { class: "opt" }, h("span", { text: "ملخص اليوم (إشعار)" }), sel),
     h("button", { class: "btn", text: "إخفاء الفقاعة (الإشعارات تفضل شغالة)", onclick: () => { S.panel = false; API.setExpanded(false); API.hideBubble(); } }),
@@ -315,9 +319,9 @@ backend.onAuth((u) => {
   S.user = u; S.ready = false; S.tasks = []; S.lists = []; startupDone = false;
   if (unsub) { unsub(); unsub = null; }
   render();
-  if (u) unsub = backend.subscribe(u.uid, (d) => { S.lists = d.lists; S.tasks = d.tasks; S.fromCache = d.fromCache; S.ready = true; if (!S.fading.size) render(); else updateBadge(); scheduleAll(); });
+  if (u) unsub = backend.subscribe(u.uid, (d) => { S.lists = d.lists; S.tasks = d.tasks; S.fromCache = d.fromCache; S.ready = true; if (!S.fading.size) render(); else updateBadge(); reportCount(); scheduleAll(); });
 });
-setInterval(() => { if (S.user && S.ready && !S.fading.size && !S.panel) render(); }, 60000);
+setInterval(() => { if (S.user && S.ready && !S.fading.size && !S.panel) render(); reportCount(); }, 60000);
 setInterval(scheduleAll, 30 * 60000);
 window.addEventListener("online", render); window.addEventListener("offline", render);
 render();

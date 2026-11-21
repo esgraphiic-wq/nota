@@ -252,7 +252,7 @@ html,body{overflow:hidden;overscroll-behavior:none}
 (function(){
 "use strict";
 var COLORS=5,FBV="https://www.gstatic.com/firebasejs/12.9.0/";
-var BUILD="2026-11-21 desktop2";
+var BUILD="2026-11-21 desktop3";
 var HOME="__home",S={lists:[],tasks:[],cur:HOME,fresh:null};
 var FB=null,cloud=null,migrated=false;
 var $=function(id){return document.getElementById(id)};
@@ -1272,6 +1272,20 @@ function settingsSheet(){
         var t={id:"__test",text:"ده تنبيه تجريبي",done:false};S.tasks.push(t);showAlarm([t],true);notifyOS(t,false);
         setTimeout(function(){S.tasks=S.tasks.filter(function(x){return x.id!=="__test"})},60000)}}})),
     h("h4",{text:"الربط بين الموبايل والكمبيوتر"})];
+  if(window.nota&&window.nota.isDesktop){
+    var dsec=h("div",{class:"dskset"});
+    window.nota.getSettings().then(function(st){
+      var sel=h("select",{id:"wdgSel"});
+      [["show","يظهر دايماً (الافتراضي)"],["tasks","يظهر لما يبقى فيه مهام النهارده"],["hide","مخفي"]].forEach(function(x){var o=h("option",{value:x[0],text:x[1]});if(x[0]===(st.widget||"show"))o.selected=true;sel.appendChild(o)});
+      sel.addEventListener("change",function(){window.nota.setSetting("widget",sel.value);toast("اتحفظ")});
+      dsec.appendChild(h("label",{for:"wdgSel"},"الفقاعة العايمة على الشاشة",sel));
+      function chk(key,txt){var c=h("input",{type:"checkbox"});c.checked=!!st[key];c.addEventListener("change",function(){window.nota.setSetting(key,c.checked);toast("اتحفظ")});return h("label",{style:"display:flex;gap:8px;align-items:center"},c,txt)}
+      dsec.appendChild(chk("pinned","الفقاعة دايماً فوق باقي النوافذ"));
+      dsec.appendChild(chk("autostart","تشغيل البرنامج مع الويندوز"));
+      dsec.appendChild(chk("notifications","إشعارات المواعيد على الكمبيوتر"));
+    });
+    kids.push(h("h4",{text:"برنامج الكمبيوتر"}),dsec);
+  }
   if(!cfg){
     var ta=h("textarea",{id:"fbCfg",placeholder:"const firebaseConfig = {\n  apiKey: \"...\",\n  projectId: \"...\"\n};"});
     kids.push(h("p",{text:"النوتة دلوقتي بتحفظ على الجهاز ده بس. عشان تتربط، الصق هنا كود firebaseConfig من مشروعك في Firebase."}),
