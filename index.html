@@ -243,7 +243,7 @@ html,body{overflow:hidden;overscroll-behavior:none}
 (function(){
 "use strict";
 var COLORS=5,FBV="https://www.gstatic.com/firebasejs/12.9.0/";
-var BUILD="2026-11-21 fullscreen";
+var BUILD="2026-11-21 ring2";
 var HOME="__home",S={lists:[],tasks:[],cur:HOME,fresh:null};
 var FB=null,cloud=null,migrated=false;
 var $=function(id){return document.getElementById(id)};
@@ -830,7 +830,7 @@ function checkUpdate(){
 }
 if(NATIVE){setTimeout(checkUpdate,4000);document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")checkUpdate()})}
 /* ---------- alarm ---------- */
-var alarm={timer:null,ids:[],notes:{},audio:null,stopT:null};
+var alarm={timer:null,ids:[],notes:{},audio:null,stopT:null,want:false};
 function ringOnce(){
   try{
     ac=ac||new (window.AudioContext||window.webkitAudioContext)();
@@ -845,21 +845,24 @@ function ringOnce(){
   }catch(e){}
 }
 function vib(){try{if(navigator.vibrate)navigator.vibrate([300,150,300,150,300])}catch(e){}}
-function stopRing(){
+function killNative(){try{var ln=LN();if(NATIVE&&ln)ln.removeAllDeliveredNotifications()}catch(e){}}
+function stopRing(user){
   clearInterval(alarm.timer);alarm.timer=null;clearTimeout(alarm.stopT);
   if(alarm.audio){try{alarm.audio.pause()}catch(e){}alarm.audio=null}
+  if(user){alarm.want=false;killNative()}
 }
 function startRing(){
-  stopRing();vib();
+  stopRing();alarm.want=true;vib();
   var fallback=function(){ringOnce();var n=0;alarm.timer=setInterval(function(){if(++n>25){stopRing();return}ringOnce();vib()},2200)};
   try{
     var a=new Audio("sounds/"+getRing()+".wav");a.loop=true;alarm.audio=a;
-    var p=a.play();if(p&&p.catch)p.catch(function(){alarm.audio=null;fallback()});
+    var p=a.play();if(p&&p.then)p.then(killNative,function(){alarm.audio=null;fallback()});
     alarm.timer=setInterval(vib,3000);
-    alarm.stopT=setTimeout(stopRing,90000);
+    alarm.stopT=setTimeout(function(){stopRing(true)},120000);
   }catch(e){fallback()}
 }
-function closeAlarm(){stopRing();var o=document.getElementById("alarm");if(o)o.remove()}
+function resumeRing(){if(alarm.want&&document.getElementById("alarm")&&!alarm.audio&&!alarm.timer)startRing()}
+function closeAlarm(){stopRing(true);var o=document.getElementById("alarm");if(o)o.remove()}
 function showAlarm(list,loud,notes){
   var old=document.getElementById("alarm");
   var ids=alarm.ids.slice();list.forEach(function(t){if(ids.indexOf(t.id)<0)ids.push(t.id)});alarm.ids=ids;
@@ -873,11 +876,11 @@ function showAlarm(list,loud,notes){
       alarm.notes[t.id]?h("div",{class:"alarmnote",text:alarm.notes[t.id]}):null,
       h("div",{class:"alarmtxt",text:t.text}),
       h("div",{class:"alarmbtns"},
-        h("button",{class:"btn main",text:"خلصت",on:{click:function(){stopRing();delete alarm.notes[t.id];patch("tasks",t.id,{done:true,doneAt:Date.now()});sound(true);showAlarm([],false)}}}),
-        h("button",{class:"btn",text:"بعد 5 دقايق",on:{click:function(){stopRing();delete alarm.notes[t.id];alarm.ids=alarm.ids.filter(function(x){return x!==t.id});patch("tasks",t.id,{due:Date.now()+5*60000,lead:0});showAlarm([],false)}}}))));
+        h("button",{class:"btn main",text:"خلصت",on:{click:function(){stopRing(true);delete alarm.notes[t.id];patch("tasks",t.id,{done:true,doneAt:Date.now()});sound(true);showAlarm([],false)}}}),
+        h("button",{class:"btn",text:"بعد 5 دقايق",on:{click:function(){stopRing(true);delete alarm.notes[t.id];alarm.ids=alarm.ids.filter(function(x){return x!==t.id});patch("tasks",t.id,{due:Date.now()+5*60000,lead:0});showAlarm([],false)}}}))));
   });
   box.appendChild(h("div",{class:"alarmbtns"},
-    h("button",{class:"btn alarmquiet",text:"اسكت الصوت",on:{click:function(){stopRing()}}}),
+    h("button",{class:"btn alarmquiet",text:"اسكت الصوت",on:{click:function(){stopRing(true)}}}),
     h("button",{class:"btn alarmquiet",text:"اقفل (وسيبها)",on:{click:function(){alarm.ids=[];alarm.notes={};closeAlarm()}}})));
   document.body.appendChild(h("div",{id:"alarm",class:"alarm",role:"alertdialog"},box));
   if(loud)startRing();
@@ -911,11 +914,11 @@ function checkDue(){
   var keys=Object.keys(seen);if(keys.length>400)keys.slice(0,keys.length-300).forEach(function(k){delete seen[k]});
   LS.set("nota.notified",JSON.stringify(seen));
   fresh.forEach(function(r){notifyOS(r.t,false,r.note)});late.forEach(function(r){notifyOS(r.t,true,r.note)});
-  showAlarm(fresh.concat(late).map(function(r){return r.t}),fresh.length>0&&document.visibilityState==="visible",notes);
+  showAlarm(fresh.concat(late).map(function(r){return r.t}),fresh.length>0&&(NATIVE||document.visibilityState==="visible"),notes);
 }
 setInterval(checkDue,15000);
-document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")checkDue()});
-window.addEventListener("focus",checkDue);
+document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible"){checkDue();resumeRing()}});
+window.addEventListener("focus",function(){checkDue();resumeRing()});
 function row(t,o){
   o=o||{};
   var kids=o.kids||[],dn=kids.filter(function(k){return k.done}).length;

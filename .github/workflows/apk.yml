@@ -32,6 +32,9 @@ jobs:
           k="mBuilder.setContentIntent(pendingIntent);"
           assert k in s, "plugin source changed"
           s=s.replace(k,k+"\n        mBuilder.setFullScreenIntent(pendingIntent, true).setCategory(NotificationCompat.CATEGORY_ALARM).setPriority(NotificationCompat.PRIORITY_MAX);",1)
+          k2="Notification buildNotification = mBuilder.build();"
+          assert k2 in s, "plugin source changed (build)"
+          s=s.replace(k2,k2+"\n        buildNotification.flags |= Notification.FLAG_INSISTENT;",1)
           open(p,"w",encoding="utf8").write(s)
           PY
           cat > capacitor.config.json <<'JSON'
