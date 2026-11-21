@@ -127,6 +127,7 @@ ul{list-style:none;margin:0;padding:0}
 .alarmtxt{font-size:22px;line-height:1.6}
 .alarmbtns{display:flex;gap:8px}.alarmbtns .btn{flex:1}
 .alarmquiet{align-self:center}
+.upd{position:fixed;inset-inline:12px;top:12px;z-index:60;background:var(--paper);border:1px solid var(--accent);border-radius:14px;padding:10px 12px;display:flex;align-items:center;gap:8px;box-shadow:0 6px 20px rgba(0,0,0,.15)}.upd span{flex:1;font-size:15px}
 
 /* additions for the standalone app */
 .top .right{display:flex;align-items:center;gap:10px}
@@ -787,6 +788,19 @@ function nativeExact(){
     if(r&&r.exact_alarm==="denied"){toast("فعّل 'المنبهات والتذكيرات' للنوتة عشان الرنة تيجي في ميعادها");setTimeout(function(){ln.changeExactNotificationSetting()},1800)}
   }).catch(function(){});
 }
+/* ---------- app update check (Android app only) ---------- */
+var APK_BUILD=0/*APKBUILD*/;
+function checkUpdate(){
+  if(!NATIVE||!APK_BUILD||document.getElementById("upd"))return;
+  fetch("https://api.github.com/repos/esgraphiic-wq/nota/releases/tags/app-latest").then(function(r){return r.json()}).then(function(j){
+    var m=/build:(\d+)/.exec(j.body||""),a=(j.assets||[])[0];
+    if(!m||!a||+m[1]<=APK_BUILD||document.getElementById("upd"))return;
+    document.body.appendChild(h("div",{id:"upd",class:"upd"},h("span",{text:"فيه نسخة جديدة من النوتة"}),
+      h("button",{class:"btn main",text:"حدّث",on:{click:function(){location.href=a.browser_download_url}}}),
+      h("button",{class:"btn",text:"بعدين",on:{click:function(){document.getElementById("upd").remove()}}})));
+  }).catch(function(){});
+}
+if(NATIVE){setTimeout(checkUpdate,4000);document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")checkUpdate()})}
 /* ---------- alarm ---------- */
 var alarm={timer:null,ids:[]};
 function ringOnce(){
