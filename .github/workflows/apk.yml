@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ["index.html", "manifest.json", "icon-*.png", ".github/workflows/apk.yml"]
+    paths: ["index.html", "manifest.json", "icon-*.png", "sounds/*", ".github/workflows/apk.yml"]
 permissions:
   contents: write
 jobs:
@@ -19,6 +19,7 @@ jobs:
         run: |
           mkdir -p www
           cp index.html manifest.json icon-192.png icon-512.png icon-maskable.png www/
+          mkdir -p www/sounds && cp sounds/*.wav www/sounds/
           sed -i "s|var APK_BUILD=0/\*APKBUILD\*/;|var APK_BUILD=${{ github.run_number }};|" www/index.html
           grep -c "APK_BUILD=${{ github.run_number }}" www/index.html
       - name: Capacitor
@@ -32,6 +33,7 @@ jobs:
           npx cap sync android
       - name: Permissions and icons
         run: |
+          mkdir -p android/app/src/main/res/raw && cp sounds/*.wav android/app/src/main/res/raw/
           M=android/app/src/main/AndroidManifest.xml
           python3 - <<'PY'
           p="android/app/src/main/AndroidManifest.xml"

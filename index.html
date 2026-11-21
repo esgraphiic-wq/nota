@@ -128,6 +128,7 @@ ul{list-style:none;margin:0;padding:0}
 .alarmbtns{display:flex;gap:8px}.alarmbtns .btn{flex:1}
 .alarmquiet{align-self:center}
 .upd{position:fixed;inset-inline:12px;top:12px;z-index:60;background:var(--paper);border:1px solid var(--accent);border-radius:14px;padding:10px 12px;display:flex;align-items:center;gap:8px;box-shadow:0 6px 20px rgba(0,0,0,.15)}.upd span{flex:1;font-size:15px}
+.alarmnote{color:var(--pen);font-weight:600;font-size:15px}
 
 /* additions for the standalone app */
 .top .right{display:flex;align-items:center;gap:10px}
@@ -242,7 +243,7 @@ html,body{overflow:hidden;overscroll-behavior:none}
 (function(){
 "use strict";
 var COLORS=5,FBV="https://www.gstatic.com/firebasejs/12.9.0/";
-var BUILD="2026-11-21 app";
+var BUILD="2026-11-21 rings";
 var HOME="__home",S={lists:[],tasks:[],cur:HOME,fresh:null};
 var FB=null,cloud=null,migrated=false;
 var $=function(id){return document.getElementById(id)};
@@ -755,6 +756,25 @@ function calUrl(t,ms){
     "&dates="+z(ms)+"/"+z(ms+30*60000)+"&details="+encodeURIComponent("من النوتة");
 }
 function askNotify(){if(NATIVE){nativeSetup().then(nativeExact);return}try{if(window.Notification&&Notification.permission==="default")Notification.requestPermission()}catch(e){}}
+/* ---------- ringtones + lead time ---------- */
+var RINGS=[["bell","جرس"],["beep","منبه رقمي"],["melody","نغمة"],["chime","رنين هادي"],["siren","سيرينة (عالية)"]];
+function getRing(){var r=LS.get("nota.ring");return RINGS.some(function(x){return x[0]===r})?r:"bell"}
+function getLead(){var n=parseInt(LS.get("nota.lead")||"0",10);return n>0?n:0}
+var LEADS=[[0,"في الميعاد بس"],[5,"قبلها بـ 5 دقايق"],[10,"قبلها بـ 10 دقايق"],[15,"قبلها بـ 15 دقيقة"],[30,"قبلها بـ نص ساعة"],[60,"قبلها بساعة"],[120,"قبلها بساعتين"],[1440,"قبلها بيوم"]];
+function leadOf(t){return typeof t.lead==="number"?t.lead:getLead()}
+function fmtLead(m){return m<60?m+" دقيقة":m===60?"ساعة":m===120?"ساعتين":m===1440?"يوم":(m/60)+" ساعة"}
+function alarmTimes(t){
+  if(t.done||!t.due)return[];
+  var l=leadOf(t),r=[{at:t.due,lead:0}];
+  if(l>0)r.push({at:t.due-l*60000,lead:l});
+  return r;
+}
+var preview=null;
+function playPreview(name){
+  try{if(preview){preview.pause();preview=null}preview=new Audio("sounds/"+name+".wav");preview.play();
+    setTimeout(function(){if(preview){preview.pause();preview=null}},4000)}catch(e){}
+}
+
 /* ---------- native (Android app) alarms ---------- */
 var NATIVE=!!(window.Capacitor&&Capacitor.isNativePlatform&&Capacitor.isNativePlatform());
 function LN(){return window.Capacitor&&Capacitor.Plugins&&Capacitor.Plugins.LocalNotifications}
@@ -763,21 +783,29 @@ var nativeT=null,nativeReady=false;
 function nativeSetup(){
   var ln=LN();if(!ln||nativeReady)return Promise.resolve();
   return ln.requestPermissions().then(function(){
-    return ln.createChannel({id:"alarm",name:"تنبيهات النوتة",description:"مواعيد المهام",importance:5,visibility:1,vibration:true,lights:true});
+    return Promise.all(RINGS.map(function(r){
+      return ln.createChannel({id:"alarm_"+r[0],name:"تنبيهات النوتة - "+r[1],description:"مواعيد المهام",importance:5,visibility:1,vibration:true,lights:true,sound:r[0]+".wav"});
+    }));
   }).then(function(){nativeReady=true}).catch(function(){});
 }
 function nativeSync(){
   if(!NATIVE||!LN())return;
   clearTimeout(nativeT);
   nativeT=setTimeout(function(){
-    var ln=LN(),now=Date.now();
+    var ln=LN(),now=Date.now(),ch="alarm_"+getRing();
     nativeSetup().then(function(){return ln.getPending()}).then(function(p){
       var old=(p&&p.notifications)||[];
       return old.length?ln.cancel({notifications:old.map(function(n){return{id:n.id}})}):null;
     }).then(function(){
-      var list=S.tasks.filter(function(t){return !t.done&&t.due&&t.due>now&&t.due<now+60*86400000}).slice(0,60).map(function(t){
-        return{id:numId(t.id),title:"ميعاد في النوتة",body:t.text,channelId:"alarm",schedule:{at:new Date(t.due),allowWhileIdle:true},extra:{tid:t.id}};
+      var list=[];
+      S.tasks.forEach(function(t){
+        alarmTimes(t).forEach(function(a){
+          if(a.at>now&&a.at<now+60*86400000)list.push({id:numId(t.id+"@"+a.at),title:a.lead?"تنبيه مسبق - النوتة":"ميعاد في النوتة",
+            body:a.lead?"بعد "+fmtLead(a.lead)+": "+t.text:t.text,channelId:ch,sound:getRing()+".wav",schedule:{at:new Date(a.at),allowWhileIdle:true},extra:{tid:t.id}});
+        });
       });
+      list.sort(function(a,b){return a.schedule.at-b.schedule.at});
+      list=list.slice(0,60);
       return list.length?ln.schedule({notifications:list}):null;
     }).catch(function(){});
   },800);
@@ -802,7 +830,7 @@ function checkUpdate(){
 }
 if(NATIVE){setTimeout(checkUpdate,4000);document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")checkUpdate()})}
 /* ---------- alarm ---------- */
-var alarm={timer:null,ids:[]};
+var alarm={timer:null,ids:[],notes:{},audio:null,stopT:null};
 function ringOnce(){
   try{
     ac=ac||new (window.AudioContext||window.webkitAudioContext)();
@@ -815,34 +843,49 @@ function ringOnce(){
       o.connect(g);g.connect(ac.destination);o.start(t+d);o.stop(t+d+0.2);
     });
   }catch(e){}
-  try{if(navigator.vibrate)navigator.vibrate([300,150,300,150,300])}catch(e){}
 }
-function stopRing(){clearInterval(alarm.timer);alarm.timer=null}
+function vib(){try{if(navigator.vibrate)navigator.vibrate([300,150,300,150,300])}catch(e){}}
+function stopRing(){
+  clearInterval(alarm.timer);alarm.timer=null;clearTimeout(alarm.stopT);
+  if(alarm.audio){try{alarm.audio.pause()}catch(e){}alarm.audio=null}
+}
+function startRing(){
+  stopRing();vib();
+  var fallback=function(){ringOnce();var n=0;alarm.timer=setInterval(function(){if(++n>25){stopRing();return}ringOnce();vib()},2200)};
+  try{
+    var a=new Audio("sounds/"+getRing()+".wav");a.loop=true;alarm.audio=a;
+    var p=a.play();if(p&&p.catch)p.catch(function(){alarm.audio=null;fallback()});
+    alarm.timer=setInterval(vib,3000);
+    alarm.stopT=setTimeout(stopRing,90000);
+  }catch(e){fallback()}
+}
 function closeAlarm(){stopRing();var o=document.getElementById("alarm");if(o)o.remove()}
-function showAlarm(list,loud){
+function showAlarm(list,loud,notes){
   var old=document.getElementById("alarm");
   var ids=alarm.ids.slice();list.forEach(function(t){if(ids.indexOf(t.id)<0)ids.push(t.id)});alarm.ids=ids;
+  if(notes)for(var k in notes)alarm.notes[k]=notes[k];
   var items=ids.map(function(id){return S.tasks.filter(function(t){return t.id===id})[0]}).filter(function(t){return t&&!t.done});
   if(!items.length){alarm.ids=[];closeAlarm();return}
   if(old)old.remove();
-  var box=h("div",{class:"alarmbox"},h("div",{class:"alarmbell",text:"⏰"}),h("h3",{text:items.length>1?"عندك "+items.length+" مواعيد":"ميعاد دلوقتي"}));
+  var box=h("div",{class:"alarmbox"},h("div",{class:"alarmbell",text:"⏰"}),h("h3",{text:items.length>1?"عندك "+items.length+" مواعيد":"تنبيه"}));
   items.forEach(function(t){
-    box.appendChild(h("div",{class:"alarmitem"},h("div",{class:"alarmtxt",text:t.text}),
+    box.appendChild(h("div",{class:"alarmitem"},
+      alarm.notes[t.id]?h("div",{class:"alarmnote",text:alarm.notes[t.id]}):null,
+      h("div",{class:"alarmtxt",text:t.text}),
       h("div",{class:"alarmbtns"},
-        h("button",{class:"btn main",text:"خلصت",on:{click:function(){stopRing();patch("tasks",t.id,{done:true,doneAt:Date.now()});sound(true);showAlarm([],false)}}}),
-        h("button",{class:"btn",text:"بعد 5 دقايق",on:{click:function(){stopRing();alarm.ids=alarm.ids.filter(function(x){return x!==t.id});patch("tasks",t.id,{due:Date.now()+5*60000});var seen={};try{seen=JSON.parse(LS.get("nota.notified")||"{}")}catch(e){}delete seen[t.id];LS.set("nota.notified",JSON.stringify(seen));showAlarm([],false)}}}))));
+        h("button",{class:"btn main",text:"خلصت",on:{click:function(){stopRing();delete alarm.notes[t.id];patch("tasks",t.id,{done:true,doneAt:Date.now()});sound(true);showAlarm([],false)}}}),
+        h("button",{class:"btn",text:"بعد 5 دقايق",on:{click:function(){stopRing();delete alarm.notes[t.id];alarm.ids=alarm.ids.filter(function(x){return x!==t.id});patch("tasks",t.id,{due:Date.now()+5*60000,lead:0});showAlarm([],false)}}}))));
   });
   box.appendChild(h("button",{class:"btn alarmquiet",text:"اسكت الصوت",on:{click:function(){stopRing()}}}));
-  var ov=h("div",{id:"alarm",class:"alarm",role:"alertdialog"},box);
-  document.body.appendChild(ov);
-  if(loud){stopRing();var n=0;ringOnce();alarm.timer=setInterval(function(){if(++n>30){stopRing();return}ringOnce()},2200)}
+  document.body.appendChild(h("div",{id:"alarm",class:"alarm",role:"alertdialog"},box));
+  if(loud)startRing();
   render();
 }
-function notifyOS(t,late){
+function notifyOS(t,late,note){
   if(NATIVE&&t.id!=="__test")return;
   try{
     if(window.Notification&&Notification.permission==="granted"){
-      var opt={body:t.text,icon:"icon-192.png",tag:t.id,renotify:true,requireInteraction:true,vibrate:[300,150,300,150,300],dir:"rtl",lang:"ar"};
+      var opt={body:(note?note+": ":"")+t.text,icon:"icon-192.png",tag:t.id,renotify:true,requireInteraction:true,vibrate:[300,150,300,150,300],dir:"rtl",lang:"ar"};
       var ttl=late?"فاتك ميعاد في النوتة":"ميعاد في النوتة";
       if(navigator.serviceWorker&&navigator.serviceWorker.ready)navigator.serviceWorker.ready.then(function(r){r.showNotification(ttl,opt)});
       else new Notification(ttl,opt);
@@ -850,17 +893,23 @@ function notifyOS(t,late){
   }catch(e){}
 }
 function checkDue(){
-  var now=Date.now(),seen={},fresh=[],late=[];
+  var now=Date.now(),seen={},fresh=[],late=[],notes={};
   try{seen=JSON.parse(LS.get("nota.notified")||"{}")}catch(e){}
   S.tasks.forEach(function(t){
-    if(t.done||!t.due||t.due>now||now-t.due>24*3600000||seen[t.id]===t.due)return;
-    seen[t.id]=t.due;
-    (now-t.due<=10*60000?fresh:late).push(t);
+    alarmTimes(t).forEach(function(a){
+      var key=t.id+"@"+a.at;
+      if(a.at>now||now-a.at>24*3600000||seen[key])return;
+      seen[key]=1;
+      if(a.lead)notes[t.id]="بعد "+fmtLead(a.lead);
+      var rec={t:t,note:a.lead?notes[t.id]:""};
+      (now-a.at<=10*60000?fresh:late).push(rec);
+    });
   });
   if(!fresh.length&&!late.length)return;
+  var keys=Object.keys(seen);if(keys.length>400)keys.slice(0,keys.length-300).forEach(function(k){delete seen[k]});
   LS.set("nota.notified",JSON.stringify(seen));
-  fresh.forEach(function(t){notifyOS(t,false)});late.forEach(function(t){notifyOS(t,true)});
-  showAlarm(fresh.concat(late),fresh.length>0&&document.visibilityState==="visible");
+  fresh.forEach(function(r){notifyOS(r.t,false,r.note)});late.forEach(function(r){notifyOS(r.t,true,r.note)});
+  showAlarm(fresh.concat(late).map(function(r){return r.t}),fresh.length>0&&document.visibilityState==="visible",notes);
 }
 setInterval(checkDue,15000);
 document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")checkDue()});
@@ -1038,12 +1087,17 @@ function taskSheet(t){
   if(pw&&!pw.explicit)pw=null;
   var when=whenField(t.due||null);
   function dueMs(){return when.get()}
+  var leadSel=h("select",{id:"taskLead"});
+  leadSel.appendChild(h("option",{value:"d",text:"زي الإعداد العام ("+(getLead()?"قبلها بـ "+fmtLead(getLead()):"في الميعاد بس")+")"}));
+  LEADS.forEach(function(x){var o=h("option",{value:String(x[0]),text:x[1]});if(typeof t.lead==="number"&&t.lead===x[0])o.selected=true;leadSel.appendChild(o)});
   openSheet(h("form",{class:"sheet",on:{submit:function(e){
     e.preventDefault();var v=input.value.trim();if(!v)return;
     var p={},d=dueMs();
     if(v!==t.text)p.text=v;
     if(!sub&&sel.value!==t.listId){p.listId=sel.value;kidsOf(t).forEach(function(k){patch("tasks",k.id,{listId:sel.value})})}
     if(d!==(t.due||null)){p.due=d;if(d)askNotify()}
+    var nl=leadSel.value==="d"?null:parseInt(leadSel.value,10);
+    if(nl!==(typeof t.lead==="number"?t.lead:null))p.lead=nl;
     if(Object.keys(p).length)patch("tasks",t.id,p);closeSheet();
   }}},
     h("h3",{text:sub?"تعديل النقطة الفرعية":"تعديل الملاحظة"}),
@@ -1052,6 +1106,7 @@ function taskSheet(t){
     pw?h("button",{type:"button",class:"wchip grab",text:"خد الميعاد من النص: "+fmtDue(pw.ms),
       on:{click:function(e){when.set(pw.ms);if(pw.rest.length>2)input.value=pw.rest;e.target.remove()}}}):null,
     h("label",{for:"taskWhen"},"ميعاد (اختياري)",when.el),
+    h("label",{for:"taskLead"},"نبهني قبل الميعاد",leadSel),
     h("div",{class:"btns"},
       h("button",{type:"button",class:"btn",text:"تذكير في تقويم جوجل",style:"color:var(--accent)",on:{click:function(){
         var d=dueMs();if(!d){toast("حدد الميعاد الأول.");return}
@@ -1079,6 +1134,18 @@ function authMsg(e){
 function settingsSheet(){
   var cfg=getCfg(),box=h("div",{class:"sheet"}),kids=[h("h3",{text:"الإعدادات"}),h("h4",{text:"التنبيهات"}),
     h("p",{text:"التنبيه بيرن ويطلع إشعار والنوتة مفتوحة أو شغالة في الخلفية. لو التطبيق اتقفل خالص، الإشعار هيظهر أول ما تفتحه."}),
+    h("label",{for:"ringSel"},"الرنة",(function(){
+      var sel=h("select",{id:"ringSel"});
+      RINGS.forEach(function(r){var o=h("option",{value:r[0],text:r[1]});if(r[0]===getRing())o.selected=true;sel.appendChild(o)});
+      sel.addEventListener("change",function(){LS.set("nota.ring",sel.value);playPreview(sel.value);nativeSync()});
+      return h("div",{style:"display:flex;gap:8px"},sel,h("button",{type:"button",class:"btn",text:"▶ سمّعني",on:{click:function(){playPreview(sel.value)}}}));
+    })()),
+    h("label",{for:"leadSel"},"التنبيه المسبق (لكل المهام اللي ليها ميعاد)",(function(){
+      var sel=h("select",{id:"leadSel"});
+      LEADS.forEach(function(x){var o=h("option",{value:String(x[0]),text:x[1]});if(x[0]===getLead())o.selected=true;sel.appendChild(o)});
+      sel.addEventListener("change",function(){LS.set("nota.lead",sel.value);nativeSync();toast("اتحفظ")});
+      return sel;
+    })()),
     h("div",{class:"btns"},
       h("button",{type:"button",class:"btn main",text:"فعّل الإشعارات",on:{click:function(){
         if(NATIVE){nativeSetup().then(nativeExact);toast("تمام");return}
