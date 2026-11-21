@@ -243,7 +243,7 @@ html,body{overflow:hidden;overscroll-behavior:none}
 (function(){
 "use strict";
 var COLORS=5,FBV="https://www.gstatic.com/firebasejs/12.9.0/";
-var BUILD="2026-11-21 actions";
+var BUILD="2026-11-21 diag";
 var HOME="__home",S={lists:[],tasks:[],cur:HOME,fresh:null};
 var FB=null,cloud=null,migrated=false;
 var $=function(id){return document.getElementById(id)};
@@ -782,15 +782,16 @@ function numId(id){var x=0;for(var i=0;i<id.length;i++)x=(x*31+id.charCodeAt(i))
 var nativeT=null,nativeReady=false;
 function nativeSetup(){
   var ln=LN();if(!ln||nativeReady)return Promise.resolve();
-  return ln.requestPermissions().then(function(){
-    return ln.registerActionTypes({types:[{id:"ALARM",actions:[
+  var ok=function(p){return Promise.resolve(p).catch(function(){})};
+  return ok(ln.requestPermissions()).then(function(){
+    return ok(ln.registerActionTypes({types:[{id:"ALARM",actions:[
       {id:"done",title:"✓ خلصت",foreground:true},
-      {id:"snooze",title:"⏰ بعد 5 دقايق",foreground:true}]}]});
+      {id:"snooze",title:"⏰ بعد 5 دقايق",foreground:true}]}]}));
   }).then(function(){
     return Promise.all(RINGS.map(function(r){
-      return ln.createChannel({id:"alarm_"+r[0],name:"تنبيهات النوتة - "+r[1],description:"مواعيد المهام",importance:5,visibility:1,vibration:true,lights:true,sound:r[0]+".wav"});
+      return ok(ln.createChannel({id:"alarm_"+r[0],name:"تنبيهات النوتة - "+r[1],description:"مواعيد المهام",importance:5,visibility:1,vibration:true,lights:true,sound:r[0]+".wav"}));
     }));
-  }).then(function(){nativeReady=true}).catch(function(){});
+  }).then(function(){nativeReady=true});
 }
 function nativeSync(){
   if(!NATIVE||!LN())return;
@@ -829,6 +830,20 @@ function nativeListen(){
       Object.keys(seen).forEach(function(k){if(k.indexOf(t.id+"@")===0)delete seen[k]});LS.set("nota.notified",JSON.stringify(seen));
       showAlarm([],false);
     }catch(e){}
+  });
+}
+function nativeDiag(){
+  var ln=LN();if(!ln){toast("مش على نسخة الأندرويد");return}
+  Promise.all([ln.checkPermissions().catch(function(){return{}}),ln.checkExactNotificationSetting().catch(function(){return{}}),ln.getPending().catch(function(){return{notifications:[]}})]).then(function(r){
+    var n=(r[2].notifications||[]).length;
+    openSheet(h("div",{class:"sheet"},h("h3",{text:"فحص التنبيهات"}),
+      h("p",{text:"إذن الإشعارات: "+(r[0].display==="granted"?"شغال":"مقفول ("+(r[0].display||"؟")+")")}),
+      h("p",{text:"المنبهات الدقيقة: "+(r[1].exact_alarm==="granted"?"شغال":"مقفول ("+(r[1].exact_alarm||"؟")+")")}),
+      h("p",{text:"تنبيهات مجدولة دلوقتي: "+n}),
+      h("div",{class:"btns"},
+        h("button",{class:"btn main",text:"أعد الجدولة",on:{click:function(){nativeReady=false;nativeSync();toast("اتجدولت من جديد");closeSheet()}}}),
+        h("button",{class:"btn",text:"افتح إعداد المنبهات",on:{click:function(){ln.changeExactNotificationSetting()}}}),
+        h("button",{class:"btn",text:"قفل",on:{click:closeSheet}}))));
   });
 }
 function nativeExact(){
@@ -1177,6 +1192,7 @@ function settingsSheet(){
         if(NATIVE){nativeSetup().then(nativeExact);toast("تمام");return}
         if(!window.Notification){toast("الجهاز ده مش بيدعم الإشعارات.");return}
         Notification.requestPermission().then(function(p){toast(p==="granted"?"الإشعارات اشتغلت":"الإشعارات مرفوضة. فعّلها من إعدادات الموبايل للتطبيق.")})}}}),
+      NATIVE?h("button",{type:"button",class:"btn",text:"فحص التنبيهات",on:{click:nativeDiag}}):null,
       h("button",{type:"button",class:"btn",text:"جرّب الرنة",on:{click:function(){
         var t={id:"__test",text:"ده تنبيه تجريبي",done:false};S.tasks.push(t);showAlarm([t],true);notifyOS(t,false);
         setTimeout(function(){S.tasks=S.tasks.filter(function(x){return x.id!=="__test"})},60000)}}})),

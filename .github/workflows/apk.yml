@@ -37,6 +37,14 @@ jobs:
           s=s.replace(k2,k2+"\n        buildNotification.flags |= Notification.FLAG_INSISTENT;",1)
           open(p,"w",encoding="utf8").write(s)
           PY
+          python3 - <<'PY'
+          p="node_modules/@capacitor/local-notifications/android/src/main/AndroidManifest.xml"
+          s=open(p,encoding="utf8").read()
+          k='<action android:name="android.intent.action.BOOT_COMPLETED" />'
+          assert k in s, "manifest changed"
+          s=s.replace(k,k+'\n                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />',1)
+          open(p,"w",encoding="utf8").write(s)
+          PY
           cat > capacitor.config.json <<'JSON'
           {"appId":"com.islamgraphic.nota","appName":"النوتة","webDir":"www","server":{"androidScheme":"https"},"android":{"backgroundColor":"#f6f8fc"}}
           JSON
