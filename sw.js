@@ -1,5 +1,5 @@
 // Always try the network first so a new version shows up; the cache is only a fallback.
-var CACHE = "nota-v2";
+var CACHE = "nota-v3";
 self.addEventListener("install", function (e) {
   e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(["./", "manifest.json", "icon-192.png"]); }));
   self.skipWaiting();
@@ -23,4 +23,11 @@ self.addEventListener("fetch", function (e) {
       return r;
     }).catch(function () { return caches.match(e.request, { ignoreSearch: true }); })
   );
+});
+self.addEventListener("notificationclick", function (e) {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (cs) {
+    for (var i = 0; i < cs.length; i++) { if ("focus" in cs[i]) return cs[i].focus(); }
+    return self.clients.openWindow("./");
+  }));
 });

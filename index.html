@@ -16,6 +16,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=Readex+Pro:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
+
 /* Layout idea: a ruled school notebook (كشكول) — blue rules, red margin on the right,
    coloured divider tabs for lists, a pen strike for finished points. One screen, composer pinned at the bottom. */
 :root{
@@ -118,6 +119,15 @@ ul{list-style:none;margin:0;padding:0}
 .toast{position:fixed;inset-inline:16px;bottom:96px;margin:0 auto;max-width:420px;background:var(--ink);color:var(--paper);padding:10px 14px;border-radius:12px;font-size:14px;z-index:9;text-align:center}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 @media (min-width:760px){.app{padding-top:12px}.page{border-inline:1px solid var(--rule)}}
+.alarm{position:fixed;inset:0;z-index:50;background:rgba(246,248,252,.96);display:flex;align-items:center;justify-content:center;padding:18px;overflow:auto}
+.alarmbox{width:100%;max-width:460px;display:flex;flex-direction:column;gap:12px;text-align:center}
+.alarmbell{font-size:64px;animation:alarmshake .6s infinite}
+@keyframes alarmshake{0%,100%{transform:rotate(0)}25%{transform:rotate(-14deg)}75%{transform:rotate(14deg)}}
+.alarmitem{background:var(--paper);border:1px solid var(--rule,#cfd8ea);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.alarmtxt{font-size:22px;line-height:1.6}
+.alarmbtns{display:flex;gap:8px}.alarmbtns .btn{flex:1}
+.alarmquiet{align-self:center}
+
 /* additions for the standalone app */
 .top .right{display:flex;align-items:center;gap:10px}
 .gear{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:var(--muted);border:1px solid var(--rule);background:var(--paper)}
@@ -231,7 +241,7 @@ html,body{overflow:hidden;overscroll-behavior:none}
 (function(){
 "use strict";
 var COLORS=5,FBV="https://www.gstatic.com/firebasejs/12.9.0/";
-var BUILD="2026-11-18 16:26";
+var BUILD="2026-11-21 alarm";
 var HOME="__home",S={lists:[],tasks:[],cur:HOME,fresh:null};
 var FB=null,cloud=null,migrated=false;
 var $=function(id){return document.getElementById(id)};
@@ -743,25 +753,69 @@ function calUrl(t,ms){
     "&dates="+z(ms)+"/"+z(ms+30*60000)+"&details="+encodeURIComponent("من النوتة");
 }
 function askNotify(){try{if(window.Notification&&Notification.permission==="default")Notification.requestPermission()}catch(e){}}
+/* ---------- alarm ---------- */
+var alarm={timer:null,ids:[]};
+function ringOnce(){
+  try{
+    ac=ac||new (window.AudioContext||window.webkitAudioContext)();
+    if(ac.state==="suspended")ac.resume();
+    var t=ac.currentTime;
+    [0,0.22,0.44,0.9,1.12,1.34].forEach(function(d,i){
+      var o=ac.createOscillator(),g=ac.createGain();
+      o.type="triangle";o.frequency.value=i%3===2?1320:1046;
+      g.gain.setValueAtTime(0.0001,t+d);g.gain.linearRampToValueAtTime(0.3,t+d+0.015);g.gain.exponentialRampToValueAtTime(0.0001,t+d+0.18);
+      o.connect(g);g.connect(ac.destination);o.start(t+d);o.stop(t+d+0.2);
+    });
+  }catch(e){}
+  try{if(navigator.vibrate)navigator.vibrate([300,150,300,150,300])}catch(e){}
+}
+function stopRing(){clearInterval(alarm.timer);alarm.timer=null}
+function closeAlarm(){stopRing();var o=document.getElementById("alarm");if(o)o.remove()}
+function showAlarm(list,loud){
+  var old=document.getElementById("alarm");
+  var ids=alarm.ids.slice();list.forEach(function(t){if(ids.indexOf(t.id)<0)ids.push(t.id)});alarm.ids=ids;
+  var items=ids.map(function(id){return S.tasks.filter(function(t){return t.id===id})[0]}).filter(function(t){return t&&!t.done});
+  if(!items.length){alarm.ids=[];closeAlarm();return}
+  if(old)old.remove();
+  var box=h("div",{class:"alarmbox"},h("div",{class:"alarmbell",text:"⏰"}),h("h3",{text:items.length>1?"عندك "+items.length+" مواعيد":"ميعاد دلوقتي"}));
+  items.forEach(function(t){
+    box.appendChild(h("div",{class:"alarmitem"},h("div",{class:"alarmtxt",text:t.text}),
+      h("div",{class:"alarmbtns"},
+        h("button",{class:"btn main",text:"خلصت",on:{click:function(){stopRing();patch("tasks",t.id,{done:true,doneAt:Date.now()});sound(true);showAlarm([],false)}}}),
+        h("button",{class:"btn",text:"بعد 5 دقايق",on:{click:function(){stopRing();alarm.ids=alarm.ids.filter(function(x){return x!==t.id});patch("tasks",t.id,{due:Date.now()+5*60000});var seen={};try{seen=JSON.parse(LS.get("nota.notified")||"{}")}catch(e){}delete seen[t.id];LS.set("nota.notified",JSON.stringify(seen));showAlarm([],false)}}}))));
+  });
+  box.appendChild(h("button",{class:"btn alarmquiet",text:"اسكت الصوت",on:{click:function(){stopRing()}}}));
+  var ov=h("div",{id:"alarm",class:"alarm",role:"alertdialog"},box);
+  document.body.appendChild(ov);
+  if(loud){stopRing();var n=0;ringOnce();alarm.timer=setInterval(function(){if(++n>30){stopRing();return}ringOnce()},2200)}
+  render();
+}
+function notifyOS(t,late){
+  try{
+    if(window.Notification&&Notification.permission==="granted"){
+      var opt={body:t.text,icon:"icon-192.png",tag:t.id,renotify:true,requireInteraction:true,vibrate:[300,150,300,150,300],dir:"rtl",lang:"ar"};
+      var ttl=late?"فاتك ميعاد في النوتة":"ميعاد في النوتة";
+      if(navigator.serviceWorker&&navigator.serviceWorker.ready)navigator.serviceWorker.ready.then(function(r){r.showNotification(ttl,opt)});
+      else new Notification(ttl,opt);
+    }
+  }catch(e){}
+}
 function checkDue(){
-  var now=Date.now(),seen={},hit=false;
+  var now=Date.now(),seen={},fresh=[],late=[];
   try{seen=JSON.parse(LS.get("nota.notified")||"{}")}catch(e){}
   S.tasks.forEach(function(t){
-    if(t.done||!t.due||t.due>now||now-t.due>5*60000||seen[t.id]===t.due)return;
-    seen[t.id]=t.due;hit=true;
-    sound(false);toast("ميعاد: "+t.text);
-    try{
-      if(window.Notification&&Notification.permission==="granted"){
-        var opt={body:t.text,icon:"icon-192.png",tag:t.id};
-        if(navigator.serviceWorker&&navigator.serviceWorker.controller)navigator.serviceWorker.ready.then(function(r){r.showNotification("ميعاد في النوتة",opt)});
-        else new Notification("ميعاد في النوتة",opt);
-      }
-    }catch(e){}
+    if(t.done||!t.due||t.due>now||now-t.due>24*3600000||seen[t.id]===t.due)return;
+    seen[t.id]=t.due;
+    (now-t.due<=10*60000?fresh:late).push(t);
   });
-  if(hit){LS.set("nota.notified",JSON.stringify(seen))}
-  if(hit||S.cur===HOME)if(!$("layer").firstChild)render();
+  if(!fresh.length&&!late.length)return;
+  LS.set("nota.notified",JSON.stringify(seen));
+  fresh.forEach(function(t){notifyOS(t,false)});late.forEach(function(t){notifyOS(t,true)});
+  showAlarm(fresh.concat(late),fresh.length>0&&document.visibilityState==="visible");
 }
-setInterval(checkDue,30000);
+setInterval(checkDue,15000);
+document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible")checkDue()});
+window.addEventListener("focus",checkDue);
 function row(t,o){
   o=o||{};
   var kids=o.kids||[],dn=kids.filter(function(k){return k.done}).length;
@@ -974,7 +1028,16 @@ function authMsg(e){
   return "ماشتغلش: "+c;
 }
 function settingsSheet(){
-  var cfg=getCfg(),box=h("div",{class:"sheet"}),kids=[h("h3",{text:"الإعدادات"}),h("h4",{text:"الربط بين الموبايل والكمبيوتر"})];
+  var cfg=getCfg(),box=h("div",{class:"sheet"}),kids=[h("h3",{text:"الإعدادات"}),h("h4",{text:"التنبيهات"}),
+    h("p",{text:"التنبيه بيرن ويطلع إشعار والنوتة مفتوحة أو شغالة في الخلفية. لو التطبيق اتقفل خالص، الإشعار هيظهر أول ما تفتحه."}),
+    h("div",{class:"btns"},
+      h("button",{type:"button",class:"btn main",text:"فعّل الإشعارات",on:{click:function(){
+        if(!window.Notification){toast("الجهاز ده مش بيدعم الإشعارات.");return}
+        Notification.requestPermission().then(function(p){toast(p==="granted"?"الإشعارات اشتغلت":"الإشعارات مرفوضة. فعّلها من إعدادات الموبايل للتطبيق.")})}}}),
+      h("button",{type:"button",class:"btn",text:"جرّب الرنة",on:{click:function(){
+        var t={id:"__test",text:"ده تنبيه تجريبي",done:false};S.tasks.push(t);showAlarm([t],true);notifyOS(t,false);
+        setTimeout(function(){S.tasks=S.tasks.filter(function(x){return x.id!=="__test"})},60000)}}})),
+    h("h4",{text:"الربط بين الموبايل والكمبيوتر"})];
   if(!cfg){
     var ta=h("textarea",{id:"fbCfg",placeholder:"const firebaseConfig = {\n  apiKey: \"...\",\n  projectId: \"...\"\n};"});
     kids.push(h("p",{text:"النوتة دلوقتي بتحفظ على الجهاز ده بس. عشان تتربط، الصق هنا كود firebaseConfig من مشروعك في Firebase."}),
@@ -1315,7 +1378,7 @@ if("serviceWorker" in navigator&&location.protocol==="https:")navigator.serviceW
     try{history.replaceState(null,"",location.pathname+location.search)}catch(e){location.hash=""}
   }
 })();
-useLocal();render();
+useLocal();render();checkDue();
 if(getCfg())connect();
 })();
 </script>
