@@ -243,7 +243,7 @@ html,body{overflow:hidden;overscroll-behavior:none}
 (function(){
 "use strict";
 var COLORS=5,FBV="https://www.gstatic.com/firebasejs/12.9.0/";
-var BUILD="2026-11-21 ring2";
+var BUILD="2026-11-21 actions";
 var HOME="__home",S={lists:[],tasks:[],cur:HOME,fresh:null};
 var FB=null,cloud=null,migrated=false;
 var $=function(id){return document.getElementById(id)};
@@ -783,6 +783,10 @@ var nativeT=null,nativeReady=false;
 function nativeSetup(){
   var ln=LN();if(!ln||nativeReady)return Promise.resolve();
   return ln.requestPermissions().then(function(){
+    return ln.registerActionTypes({types:[{id:"ALARM",actions:[
+      {id:"done",title:"✓ خلصت",foreground:true},
+      {id:"snooze",title:"⏰ بعد 5 دقايق",foreground:true}]}]});
+  }).then(function(){
     return Promise.all(RINGS.map(function(r){
       return ln.createChannel({id:"alarm_"+r[0],name:"تنبيهات النوتة - "+r[1],description:"مواعيد المهام",importance:5,visibility:1,vibration:true,lights:true,sound:r[0]+".wav"});
     }));
@@ -801,7 +805,7 @@ function nativeSync(){
       S.tasks.forEach(function(t){
         alarmTimes(t).forEach(function(a){
           if(a.at>now&&a.at<now+60*86400000)list.push({id:numId(t.id+"@"+a.at),title:a.lead?"تنبيه مسبق - النوتة":"ميعاد في النوتة",
-            body:a.lead?"بعد "+fmtLead(a.lead)+": "+t.text:t.text,channelId:ch,sound:getRing()+".wav",schedule:{at:new Date(a.at),allowWhileIdle:true},extra:{tid:t.id}});
+            body:a.lead?"بعد "+fmtLead(a.lead)+": "+t.text:t.text,channelId:ch,actionTypeId:"ALARM",sound:getRing()+".wav",schedule:{at:new Date(a.at),allowWhileIdle:true},extra:{tid:t.id}});
         });
       });
       list.sort(function(a,b){return a.schedule.at-b.schedule.at});
@@ -809,6 +813,23 @@ function nativeSync(){
       return list.length?ln.schedule({notifications:list}):null;
     }).catch(function(){});
   },800);
+}
+function nativeListen(){
+  var ln=LN();if(!NATIVE||!ln)return;
+  ln.addListener("localNotificationActionPerformed",function(ev){
+    try{
+      var tid=ev&&ev.notification&&ev.notification.extra&&ev.notification.extra.tid;
+      var t=S.tasks.filter(function(x){return x.id===tid})[0];
+      if(!t||(ev.actionId!=="done"&&ev.actionId!=="snooze"))return;
+      stopRing(true);
+      if(ev.actionId==="done"){patch("tasks",t.id,{done:true,doneAt:Date.now()});toast("تمام، اتشطبت")}
+      else{patch("tasks",t.id,{due:Date.now()+5*60000,lead:0});toast("هفكرك بعد 5 دقايق")}
+      alarm.ids=alarm.ids.filter(function(x){return x!==t.id});delete alarm.notes[t.id];
+      var seen={};try{seen=JSON.parse(LS.get("nota.notified")||"{}")}catch(e){}
+      Object.keys(seen).forEach(function(k){if(k.indexOf(t.id+"@")===0)delete seen[k]});LS.set("nota.notified",JSON.stringify(seen));
+      showAlarm([],false);
+    }catch(e){}
+  });
 }
 function nativeExact(){
   var ln=LN();if(!ln)return;
@@ -1500,7 +1521,7 @@ if("serviceWorker" in navigator&&location.protocol==="https:"&&!(window.Capacito
     try{history.replaceState(null,"",location.pathname+location.search)}catch(e){location.hash=""}
   }
 })();
-useLocal();render();checkDue();
+useLocal();render();nativeListen();checkDue();
 if(getCfg())connect();
 })();
 </script>
