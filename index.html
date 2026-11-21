@@ -243,7 +243,7 @@ html,body{overflow:hidden;overscroll-behavior:none}
 (function(){
 "use strict";
 var COLORS=5,FBV="https://www.gstatic.com/firebasejs/12.9.0/";
-var BUILD="2026-11-21 diag";
+var BUILD="2026-11-21 diag2";
 var HOME="__home",S={lists:[],tasks:[],cur:HOME,fresh:null};
 var FB=null,cloud=null,migrated=false;
 var $=function(id){return document.getElementById(id)};
@@ -842,6 +842,9 @@ function nativeDiag(){
       h("p",{text:"تنبيهات مجدولة دلوقتي: "+n}),
       h("div",{class:"btns"},
         h("button",{class:"btn main",text:"أعد الجدولة",on:{click:function(){nativeReady=false;nativeSync();toast("اتجدولت من جديد");closeSheet()}}}),
+        h("button",{class:"btn",text:"اختبار بعد 30 ثانية (اقفل الشاشة)",on:{click:function(){
+          nativeSetup().then(function(){return ln.schedule({notifications:[{id:999001,title:"اختبار النوتة",body:"لو شفت ده يبقى التنبيه شغال",channelId:"alarm_"+getRing(),actionTypeId:"ALARM",sound:getRing()+".wav",schedule:{at:new Date(Date.now()+30000),allowWhileIdle:true},extra:{tid:"none"}}]})}).then(function(){toast("اتجدول بعد 30 ثانية. اقفل الشاشة دلوقتي")},function(e){toast("فشل: "+(e&&e.message||e))});
+          closeSheet()}}}),
         h("button",{class:"btn",text:"افتح إعداد المنبهات",on:{click:function(){ln.changeExactNotificationSetting()}}}),
         h("button",{class:"btn",text:"قفل",on:{click:closeSheet}}))));
   });
