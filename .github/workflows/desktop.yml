@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ["desktop/**", ".github/workflows/desktop.yml"]
+    paths: ["desktop/**", "index.html", ".github/workflows/desktop.yml"]
 permissions:
   contents: write
 jobs:
@@ -17,6 +17,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
+      - name: Bundle the notes app into the program
+        working-directory: .
+        run: cp index.html desktop/src/nota-app.html
       - name: Install
         run: npm install --no-audit --no-fund
       - name: Build installer

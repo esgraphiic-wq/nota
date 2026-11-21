@@ -4,6 +4,8 @@ fs.rmSync("dist", { recursive: true, force: true });
 fs.mkdirSync("dist/fonts", { recursive: true });
 esbuild.buildSync({ entryPoints: ["src/renderer.js"], bundle: true, minify: true, format: "iife", outfile: "dist/renderer.js", target: "chrome120" });
 for (const f of ["index.html", "style.css"]) fs.copyFileSync(path.join("src", f), path.join("dist", f));
+fs.copyFileSync("build/icon.png", "dist/icon.png");
+if (fs.existsSync("src/nota-app.html")) fs.copyFileSync("src/nota-app.html", "dist/app.html"); else console.warn("no nota-app.html");
 let css = "";
 const RANGES = {
   arabic: "U+0600-06FF,U+200C-200E,U+2010-2011,U+204F,U+2E41,U+FB50-FDFF,U+FE80-FEFC",

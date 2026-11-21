@@ -10,10 +10,11 @@ const CFG = {
   storageBucket: "nota-islam.firebasestorage.app", messagingSenderId: "782390960025", appId: "1:782390960025:web:198c2a8c843aff3f62fd08"
 };
 const DEMO = /[?&]demo/.test(location.search);
-const API = window.nota || { notify: (n) => console.log("notify", n), hide() {}, quit() {}, openExternal: (u) => window.open(u), getSettings: async () => ({ autostart: true, notifications: true, summaryHour: 9, pinned: false }), setSetting: async () => true, onVisible() {} };
+function DEMO_EXP() { return /[?&]open/.test(location.search); }
+const API = window.nota || { toggle() { S.expanded = !S.expanded; render(); }, setExpanded(v) { S.expanded = !!v; render(); }, onLayout() {}, dragStart() {}, dragMove() {}, bubbleMenu() {}, hideBubble() {}, openApp() { window.open("/app.html"); }, notify: (n) => console.log("notify", n), hide() {}, quit() {}, getSettings: async () => ({ autostart: true, notifications: true, summaryHour: 9, pinned: false }), setSetting: async () => true, onVisible() {} };
 
 /* ---------------- state ---------------- */
-const S = { user: null, ready: false, lists: [], tasks: [], fromCache: false, expanded: new Set(), fading: new Set(), panel: false, settings: { autostart: true, notifications: true, summaryHour: 9, pinned: false }, loginErr: "", wisdomShift: 0 };
+const S = { expanded: DEMO_EXP(), side: "left", bubbleTop: 4, bubbleLeft: 4, confirm: false, user: null, ready: false, lists: [], tasks: [], fromCache: false, openSubs: new Set(), fading: new Set(), panel: false, settings: { autostart: true, notifications: true, summaryHour: 9, pinned: false }, loginErr: "", wisdomShift: 0 };
 const $app = document.getElementById("app");
 
 /* ---------------- helpers ---------------- */
@@ -123,14 +124,34 @@ const backend = DEMO ? demoBackend() : fbBackend();
 let unsub = null;
 
 /* ---------------- rendering ---------------- */
+function bubbleEl(left, alertN, overdue) {
+  const el = h("div", { class: "bubble nodrag" + (overdue ? " alert" : "") + (S.expanded ? " on" : ""), style: "left:" + S.bubbleLeft + "px;top:" + S.bubbleTop + "px", title: "دوس لمهام النهارده · اسحب لتحريكها · كليك يمين للخيارات" },
+    h("span", { class: "bi", html: '<svg viewBox="0 0 24 24"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M9 9h6M9 13h4"/><path d="M5 17a3 3 0 0 1 3-3h11"/></svg>' }),
+    S.user && S.ready ? h("span", { class: "bb" + (alertN ? "" : " zero"), text: alertN ? String(alertN) : "✓" }) : null);
+  let down = null, moved = false;
+  el.addEventListener("pointerdown", (e) => { if (e.button !== 0) return; down = { x: e.screenX, y: e.screenY }; moved = false; el.setPointerCapture(e.pointerId); API.dragStart(); });
+  el.addEventListener("pointermove", (e) => {
+    if (!down) return; const dx = e.screenX - down.x, dy = e.screenY - down.y;
+    if (!moved && Math.hypot(dx, dy) < 5) return; moved = true; el.classList.add("drag"); API.dragMove(dx, dy);
+  });
+  const up = () => { if (!down) return; const was = moved; down = null; el.classList.remove("drag"); if (!was) API.toggle(); };
+  el.addEventListener("pointerup", up); el.addEventListener("pointercancel", () => { down = null; el.classList.remove("drag"); });
+  el.addEventListener("contextmenu", (e) => { e.preventDefault(); API.bubbleMenu(); });
+  return el;
+}
 function render() {
   const keepScroll = $app.querySelector(".list") ? $app.querySelector(".list").scrollTop : 0;
   $app.textContent = "";
+  const gs = S.user && S.ready ? groups() : [];
+  const left = gs.filter((g) => !g.t.done).length, now = Date.now();
+  const overdue = gs.some((g) => !g.t.done && g.t.due && g.t.due < now);
+  const stage = h("div", { class: "stage side-" + S.side + (S.expanded ? " expanded" : "") });
+  $app.append(stage);
+  stage.append(bubbleEl(0, left, overdue));
+  if (!S.expanded) return;
   const card = h("div", { class: "card" });
-  $app.append(card);
+  stage.append(card);
   if (!S.user) { card.append(topBar(false), loginView()); return; }
-  const gs = groups();
-  const left = gs.filter((g) => !g.t.done).length;
   card.append(topBar(true));
   const w = h("div", { class: "quote nodrag", title: "دوس لحكمة تانية", onclick: () => { S.wisdomShift++; render(); } },
     h("div", { class: "q", text: "“" + wisdom(S.wisdomShift) + "”" }), h("small", { text: "حكمة اليوم" }));
@@ -143,8 +164,9 @@ function render() {
   card.append(list);
   card.append(h("div", { class: "foot nodrag" },
     h("div", { class: "sync" }, h("span", { class: "led" + (S.fromCache || !navigator.onLine ? " off" : "") }), h("span", { text: S.fromCache || !navigator.onLine ? "من غير نت (محفوظ على الجهاز)" : "متزامن" })),
-    h("button", { class: "link", text: "فتح النوتة", onclick: () => API.openExternal(WEB_URL) })));
+    h("button", { class: "link", text: "فتح النوتة", onclick: () => API.openApp() })));
   if (S.panel) card.append(panelView());
+  if (S.confirm) card.append(confirmView());
   list.scrollTop = keepScroll;
 }
 function topBar(authed) {
@@ -152,14 +174,21 @@ function topBar(authed) {
     h("div", { class: "hello" }, h("h1", { text: authed ? greeting() : "النوتة" }),
       h("p", { text: new Date().toLocaleDateString("ar-EG-u-nu-latn", { weekday: "long", day: "numeric", month: "long" }) })),
     authed ? h("button", { class: "ibtn nodrag", title: "الإعدادات", html: ICON.gear, onclick: () => { S.panel = !S.panel; render(); } }) : null,
-    h("button", { class: "ibtn nodrag", title: "إخفاء الويدجت (يفضل شغال جنب الساعة)", html: ICON.x, onclick: () => API.hide() }));
+    h("button", { class: "ibtn nodrag", title: "إغلاق", html: ICON.x, onclick: () => { S.confirm = true; render(); } }));
+}
+function confirmView() {
+  return h("div", { class: "panel nodrag" }, h("h3", { text: "تقفلها؟" }),
+    h("p", { class: "sub", text: "الإشعارات بتشتغل طول ما البرنامج شغال. لو قفلته تماماً مش هتوصلك مواعيد لحد ما تفتحه تاني." }),
+    h("button", { class: "btn main", text: "إخفاء الفقاعة (الإشعارات تفضل شغالة)", onclick: () => { S.confirm = false; API.setExpanded(false); API.hideBubble(); } }),
+    h("button", { class: "btn danger", text: "إغلاق البرنامج تماماً", onclick: () => API.quit() }),
+    h("button", { class: "btn", text: "إلغاء", onclick: () => { S.confirm = false; render(); } }));
 }
 function chkBtn(t, onDone) {
   return h("button", { class: "chk" + (t.done ? " on" : ""), "aria-label": "خلصت", html: ICON.check, onclick: (e) => { e.stopPropagation(); onDone(e.currentTarget); } });
 }
 function taskEl(g) {
   const { t, kids } = g, l = listOf(t.listId), end = endToday(), now = Date.now();
-  const el = h("div", { class: "task" + (S.expanded.has(t.id) ? " open" : "") + (t.done ? " done" : ""), "data-id": t.id });
+  const el = h("div", { class: "task" + (S.openSubs.has(t.id) ? " open" : "") + (t.done ? " done" : ""), "data-id": t.id });
   const meta = h("div", { class: "meta" });
   if (t.due && t.due <= end) {
     const late = t.due < dayStart(now), pass = t.due < now;
@@ -169,7 +198,7 @@ function taskEl(g) {
   const row = h("div", { class: "row" },
     chkBtn(t, (btn) => finish(el, t)),
     h("div", { class: "txt" }, h("div", { class: "t", text: t.text }), meta),
-    kids.length ? h("button", { class: "exp", title: "النقط الفرعية", onclick: () => { const o = el.classList.toggle("open"); o ? S.expanded.add(t.id) : S.expanded.delete(t.id); } },
+    kids.length ? h("button", { class: "exp", title: "النقط الفرعية", onclick: () => { const o = el.classList.toggle("open"); o ? S.openSubs.add(t.id) : S.openSubs.delete(t.id); } },
       h("span", { text: kids.filter((k) => k.done).length + "/" + kids.length }), h("span", { html: ICON.chev, style: "display:flex" })) : null);
   el.append(row);
   if (kids.length) {
@@ -182,7 +211,7 @@ function taskEl(g) {
       inner.append(kel);
     });
     el.append(h("div", { class: "subs" }, h("div", {}, inner)));
-    row.addEventListener("click", (e) => { if (!e.target.closest(".chk,.exp")) { const o = el.classList.toggle("open"); o ? S.expanded.add(t.id) : S.expanded.delete(t.id); } });
+    row.addEventListener("click", (e) => { if (!e.target.closest(".chk,.exp")) { const o = el.classList.toggle("open"); o ? S.openSubs.add(t.id) : S.openSubs.delete(t.id); } });
   }
   return el;
 }
@@ -191,11 +220,12 @@ function finish(el, t) {
   S.fading.add(t.id);
   toggleDone(t);
   setTimeout(() => el.classList.add("gone"), 650);
-  setTimeout(() => { S.fading.delete(t.id); S.expanded.delete(t.id); el.remove(); updateBadge(); }, 1200);
+  setTimeout(() => { S.fading.delete(t.id); S.openSubs.delete(t.id); el.remove(); updateBadge(); }, 1200);
 }
 function updateBadge() {
-  const left = groups().filter((g) => !g.t.done).length, b = document.querySelector(".badge");
+  const left = groups().filter((g) => !g.t.done).length, b = document.querySelector(".badge"), bb = document.querySelector(".bb");
   if (b) { b.textContent = String(left); b.classList.toggle("zero", !left); }
+  if (bb) { bb.textContent = left ? String(left) : "✓"; bb.classList.toggle("zero", !left); }
   if (!left && S.ready && !document.querySelector(".task")) render();
 }
 function loginView() {
@@ -220,9 +250,9 @@ function panelView() {
   return h("div", { class: "panel nodrag" }, h("h3", { text: "الإعدادات" }),
     h("div", { class: "opt" }, h("span", { text: "يفتح مع تشغيل الويندوز" }), sw("autostart")),
     h("div", { class: "opt" }, h("span", { text: "إشعارات المواعيد" }), sw("notifications")),
-    h("div", { class: "opt" }, h("span", { text: "ثبّت الويدجت فوق النوافذ" }), sw("pinned")),
+    h("div", { class: "opt" }, h("span", { text: "الفقاعة دايماً فوق النوافذ" }), sw("pinned")),
     h("div", { class: "opt" }, h("span", { text: "ملخص اليوم (إشعار)" }), sel),
-    h("button", { class: "btn", text: "إخفاء الويدجت (الإشعارات تفضل شغالة)", onclick: () => { S.panel = false; render(); API.hide(); } }),
+    h("button", { class: "btn", text: "إخفاء الفقاعة (الإشعارات تفضل شغالة)", onclick: () => { S.panel = false; API.setExpanded(false); API.hideBubble(); } }),
     h("button", { class: "btn", text: "تسجيل خروج", onclick: async () => { S.panel = false; await backend.signOut(); } }),
     h("button", { class: "btn danger", text: "إغلاق البرنامج بالكامل", onclick: () => API.quit() }),
     h("button", { class: "btn main", text: "تمام", onclick: () => { S.panel = false; render(); } }));
@@ -280,7 +310,7 @@ function sendSummary() {
 
 /* ---------------- boot ---------------- */
 API.getSettings().then((s) => { Object.assign(S.settings, s); render(); scheduleAll(); });
-API.onVisible(() => { render(); });
+API.onLayout((l) => { S.expanded = l.expanded; S.side = l.side; S.bubbleTop = l.bubbleTop; S.bubbleLeft = l.bubbleLeft; render(); });
 backend.onAuth((u) => {
   S.user = u; S.ready = false; S.tasks = []; S.lists = []; startupDone = false;
   if (unsub) { unsub(); unsub = null; }

@@ -1,9 +1,10 @@
 const { app, BrowserWindow, Tray, Menu, Notification, ipcMain, screen, shell, nativeImage } = require("electron");
 const path = require("path"), fs = require("fs"), http = require("http");
 
-const WEB_URL = "https://esgraphiic-wq.github.io/nota/";
-const DEFAULTS = { autostart: true, notifications: true, summaryHour: 9, pinned: false, bounds: null };
-let win = null, tray = null, settings = { ...DEFAULTS }, quitting = false, port = 0;
+const DEFAULTS = { autostart: true, notifications: true, summaryHour: 9, pinned: true, bubble: null };
+const B = 72, PAD = 4, PANEL_W = 392, GAP = 6;
+let win = null, appWin = null, tray = null, settings = { ...DEFAULTS }, quitting = false, port = 0;
+let expanded = false, side = "left", bubbleOff = { x: PAD, y: PAD }, dragStart = null;
 
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 else {
@@ -13,10 +14,10 @@ else {
   const saveSettings = () => { try { fs.writeFileSync(file(), JSON.stringify(settings)); } catch (e) {} };
   const applyAutostart = () => { if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: !!settings.autostart, args: ["--autostart"] }); };
 
-  // Tiny local server on a fixed port: keeps one stable origin (so the Firebase login survives restarts).
+  // Local server on a fixed port: one stable origin, so the Firebase login is shared by the bubble and the notes window.
   function serve() {
     const root = path.join(__dirname, "dist");
-    const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2", ".png": "image/png" };
+    const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2", ".png": "image/png", ".json": "application/json" };
     const srv = http.createServer((req, res) => {
       let p = decodeURIComponent((req.url || "/").split("?")[0]);
       if (p === "/") p = "/index.html";
@@ -38,53 +39,115 @@ else {
     });
   }
 
-  function placeWindow() {
-    const wa = screen.getPrimaryDisplay().workArea, w = 392, h = Math.min(660, wa.height - 32);
-    const b = settings.bounds;
-    if (b && screen.getAllDisplays().some((d) => b.x >= d.bounds.x && b.x < d.bounds.x + d.bounds.width - 60 && b.y >= d.bounds.y && b.y < d.bounds.y + d.bounds.height - 60)) return b;
-    return { x: wa.x + wa.width - w - 16, y: wa.y + 16, width: w, height: h };
+  /* ---------- bubble geometry ---------- */
+  const workArea = (pt) => screen.getDisplayNearestPoint(pt).workArea;
+  const clamp = (v, a, b) => Math.max(a, Math.min(v, b));
+  function bubblePos() {
+    const p = settings.bubble;
+    if (p && screen.getAllDisplays().some((d) => p.x >= d.bounds.x - 10 && p.x < d.bounds.x + d.bounds.width - 20 && p.y >= d.bounds.y - 10 && p.y < d.bounds.y + d.bounds.height - 20)) return p;
+    const wa = screen.getPrimaryDisplay().workArea;
+    return { x: wa.x + wa.width - B - 24, y: wa.y + Math.round(wa.height * 0.3) };
+  }
+  function layout(isExpanded) {
+    const bp = bubblePos(), wa = workArea({ x: bp.x, y: bp.y });
+    expanded = isExpanded;
+    if (!expanded) {
+      bubbleOff = { x: PAD, y: PAD };
+      return { x: bp.x - PAD, y: bp.y - PAD, width: B + 2 * PAD, height: B + 2 * PAD };
+    }
+    const ph = Math.min(640, wa.height - 16), width = PANEL_W + GAP + B + 2 * PAD;
+    side = bp.x + B / 2 > wa.x + wa.width / 2 ? "left" : "right";
+    // keep the bubble where it is; slide the window vertically only if the panel would not fit
+    const y = clamp(bp.y - PAD, wa.y + 8, wa.y + wa.height - ph - 8);
+    const x = side === "left" ? bp.x + B + PAD - width : bp.x - PAD;
+    bubbleOff = { x: bp.x - x, y: bp.y - y };
+    return { x, y, width, height: ph };
+  }
+  function applyShape() {
+    if (!win || typeof win.setShape !== "function") return;
+    try {
+      const [w, h] = win.getSize();
+      if (!expanded) return win.setShape([{ x: 0, y: 0, width: w, height: h }]);
+      const bx = bubbleOff.x - PAD, by = bubbleOff.y - PAD, pw = w - (B + 2 * PAD) - GAP;
+      win.setShape([{ x: bx, y: by, width: B + 2 * PAD, height: B + 2 * PAD }, { x: side === "left" ? 0 : w - pw, y: 0, width: pw, height: h }]);
+    } catch (e) {}
+  }
+  function sendLayout() { if (win && !win.isDestroyed()) win.webContents.send("layout", { expanded, side, bubbleTop: bubbleOff.y, bubbleLeft: bubbleOff.x }); }
+  let applying = false;
+  function setExpanded(v) {
+    if (!win) return;
+    const b = layout(v);
+    applying = true;
+    win.setResizable(true);
+    win.setBounds(b);
+    win.setResizable(false);
+    applyShape();
+    setTimeout(() => { applying = false; }, 150);
+    sendLayout();
   }
 
   function createWindow() {
-    const b = placeWindow();
+    const b = layout(false);
     win = new BrowserWindow({
-      ...b, minWidth: 340, minHeight: 420, show: false, frame: false, transparent: true, hasShadow: false,
-      skipTaskbar: true, alwaysOnTop: !!settings.pinned, backgroundColor: "#00000000", title: "النوتة",
+      ...b, show: false, frame: false, transparent: true, hasShadow: false, resizable: false, maximizable: false, minimizable: false, fullscreenable: false,
+      skipTaskbar: true, alwaysOnTop: !!settings.pinned, focusable: true, backgroundColor: "#00000000", title: "النوتة",
       webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false }
     });
+    if (settings.pinned) win.setAlwaysOnTop(true, "floating");
     win.loadURL(`http://127.0.0.1:${port}/index.html`);
+    win.webContents.on("did-finish-load", () => { applyShape(); sendLayout(); });
     win.once("ready-to-show", () => win.show());
     win.on("close", (e) => { if (!quitting) { e.preventDefault(); win.hide(); } });
-    let t = null;
-    const keep = () => { clearTimeout(t); t = setTimeout(() => { if (win && !win.isDestroyed()) { settings.bounds = win.getBounds(); saveSettings(); } }, 600); };
-    win.on("move", keep); win.on("resize", keep);
-    win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: "deny" }; });
+    win.on("move", () => {
+      if (applying) return;
+      const [x, y] = win.getPosition();
+      settings.bubble = { x: x + bubbleOff.x, y: y + bubbleOff.y };
+      clearTimeout(win._t); win._t = setTimeout(saveSettings, 500);
+    });
+    win.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//.test(url)) shell.openExternal(url); return { action: "deny" }; });
   }
 
-  function showWidget() {
+  function showBubble(openPanel) {
     if (!win) return;
-    win.show(); win.focus(); win.webContents.send("visible");
+    if (!win.isVisible()) win.show();
+    if (openPanel && !expanded) setExpanded(true);
   }
-  function toggleWidget() { if (win && win.isVisible()) win.hide(); else showWidget(); }
 
-  function buildTray() {
-    const img = nativeImage.createFromPath(path.join(__dirname, "build", "icon.png")).resize({ width: 32, height: 32 });
-    tray = new Tray(img);
-    tray.setToolTip("النوتة");
-    const menu = () => Menu.buildFromTemplate([
-      { label: "إظهار الويدجت", click: showWidget },
-      { label: "فتح النوتة على الويب", click: () => shell.openExternal(WEB_URL) },
+  /* ---------- the notes app, as a real window (not a browser tab) ---------- */
+  function openNotes() {
+    if (appWin && !appWin.isDestroyed()) { if (appWin.isMinimized()) appWin.restore(); appWin.show(); appWin.focus(); return; }
+    appWin = new BrowserWindow({
+      width: 1180, height: 820, minWidth: 380, minHeight: 520, title: "النوتة", backgroundColor: "#f6f8fc",
+      icon: path.join(__dirname, "build", "icon.png"), autoHideMenuBar: true,
+      webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, sandbox: true }
+    });
+    appWin.setMenuBarVisibility(false);
+    appWin.loadURL(`http://127.0.0.1:${port}/app.html`);
+    appWin.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//.test(url)) shell.openExternal(url); return { action: "deny" }; });
+    appWin.on("closed", () => { appWin = null; });
+  }
+
+  function trayMenu() {
+    return Menu.buildFromTemplate([
+      { label: "إظهار الفقاعة", click: () => showBubble(false) },
+      { label: "عرض مهام اليوم", click: () => showBubble(true) },
+      { label: "فتح النوتة", click: openNotes },
       { type: "separator" },
       { label: "التشغيل مع الويندوز", type: "checkbox", checked: !!settings.autostart, click: (i) => { settings.autostart = i.checked; saveSettings(); applyAutostart(); } },
       { label: "إشعارات المواعيد", type: "checkbox", checked: !!settings.notifications, click: (i) => { settings.notifications = i.checked; saveSettings(); } },
       { type: "separator" },
-      { label: "خروج", click: () => { quitting = true; app.quit(); } }
+      { label: "خروج (يقفل الإشعارات كمان)", click: () => { quitting = true; app.quit(); } }
     ]);
-    tray.on("click", toggleWidget);
-    tray.on("right-click", () => tray.popUpContextMenu(menu()));
+  }
+  function buildTray() {
+    const img = nativeImage.createFromPath(path.join(__dirname, "build", "icon.png")).resize({ width: 32, height: 32 });
+    tray = new Tray(img);
+    tray.setToolTip("النوتة");
+    tray.on("click", () => { if (win && win.isVisible()) win.hide(); else showBubble(false); });
+    tray.on("right-click", () => tray.popUpContextMenu(trayMenu()));
   }
 
-  app.on("second-instance", showWidget);
+  app.on("second-instance", () => showBubble(true));
   app.whenReady().then(async () => {
     loadSettings();
     applyAutostart();
@@ -93,23 +156,37 @@ else {
     buildTray();
   });
   app.on("before-quit", () => { quitting = true; });
-  app.on("window-all-closed", (e) => e && e.preventDefault && e.preventDefault());
+  app.on("window-all-closed", () => {});
 
+  /* ---------- IPC ---------- */
   ipcMain.on("notify", (_e, n) => {
     if (!settings.notifications || !Notification.isSupported()) return;
     const x = new Notification({ title: String(n.title || "النوتة"), body: String(n.body || ""), silent: false });
-    x.on("click", showWidget);
+    x.on("click", () => showBubble(true));
     x.show();
   });
-  ipcMain.on("hide", () => win && win.hide());
+  ipcMain.on("toggle", () => setExpanded(!expanded));
+  ipcMain.on("set-expanded", (_e, v) => setExpanded(!!v));
+  ipcMain.on("drag-start", () => { if (win) dragStart = { b: win.getBounds() }; });
+  ipcMain.on("drag-move", (_e, dx, dy) => {
+    if (!win || !dragStart) return;
+    let x = Math.round(dragStart.b.x + dx), y = Math.round(dragStart.b.y + dy);
+    // keep the bubble itself on a screen
+    const bx = x + bubbleOff.x, by = y + bubbleOff.y, wa = workArea({ x: bx, y: by });
+    x += clamp(bx, wa.x, wa.x + wa.width - B) - bx;
+    y += clamp(by, wa.y, wa.y + wa.height - B) - by;
+    win.setPosition(x, y);
+  });
+  ipcMain.on("bubble-menu", () => { if (win) trayMenu().popup({ window: win }); });
+  ipcMain.on("hide-bubble", () => { if (win) win.hide(); });
   ipcMain.on("quit", () => { quitting = true; app.quit(); });
-  ipcMain.on("open-external", (_e, u) => { if (/^https:\/\//.test(u)) shell.openExternal(u); });
+  ipcMain.on("open-app", openNotes);
   ipcMain.handle("get-settings", () => ({ autostart: settings.autostart, notifications: settings.notifications, summaryHour: settings.summaryHour, pinned: settings.pinned }));
   ipcMain.handle("set-setting", (_e, k, v) => {
     if (!["autostart", "notifications", "summaryHour", "pinned"].includes(k)) return;
     settings[k] = v; saveSettings();
     if (k === "autostart") applyAutostart();
-    if (k === "pinned" && win) win.setAlwaysOnTop(!!v);
+    if (k === "pinned" && win) win.setAlwaysOnTop(!!v, "floating");
     return true;
   });
 }

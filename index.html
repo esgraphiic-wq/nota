@@ -243,7 +243,7 @@ html,body{overflow:hidden;overscroll-behavior:none}
 (function(){
 "use strict";
 var COLORS=5,FBV="https://www.gstatic.com/firebasejs/12.9.0/";
-var BUILD="2026-11-21 summary";
+var BUILD="2026-11-21 desktop";
 var HOME="__home",S={lists:[],tasks:[],cur:HOME,fresh:null};
 var FB=null,cloud=null,migrated=false;
 var $=function(id){return document.getElementById(id)};
@@ -992,6 +992,7 @@ function notifyOS(t,late,note){
   }catch(e){}
 }
 function checkDue(){
+  if(window.nota&&window.nota.isDesktop)return; // desktop program handles reminders
   var now=Date.now(),seen={},fresh=[],late=[],notes={};
   try{seen=JSON.parse(LS.get("nota.notified")||"{}")}catch(e){}
   S.tasks.forEach(function(t){
