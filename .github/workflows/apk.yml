@@ -1,0 +1,74 @@
+name: Build Android app
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["index.html", "manifest.json", "icon-*.png", ".github/workflows/apk.yml"]
+permissions:
+  contents: write
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - name: Web files
+        run: |
+          mkdir -p www
+          cp index.html manifest.json icon-192.png icon-512.png icon-maskable.png www/
+      - name: Capacitor
+        run: |
+          npm init -y >/dev/null
+          npm i @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7 @capacitor/local-notifications@7
+          cat > capacitor.config.json <<'JSON'
+          {"appId":"com.islamgraphic.nota","appName":"النوتة","webDir":"www","server":{"androidScheme":"https"},"android":{"backgroundColor":"#f6f8fc"}}
+          JSON
+          npx cap add android
+          npx cap sync android
+      - name: Permissions and icons
+        run: |
+          M=android/app/src/main/AndroidManifest.xml
+          python3 - <<'PY'
+          p="android/app/src/main/AndroidManifest.xml"
+          s=open(p,encoding="utf8").read()
+          add=""
+          for perm in ["POST_NOTIFICATIONS","VIBRATE","RECEIVE_BOOT_COMPLETED","SCHEDULE_EXACT_ALARM","WAKE_LOCK","USE_FULL_SCREEN_INTENT"]:
+              line='<uses-permission android:name="android.permission.%s" />'%perm
+              if line not in s: add+="    "+line+"\n"
+          s=s.replace("</manifest>",add+"</manifest>")
+          open(p,"w",encoding="utf8").write(s)
+          PY
+          R=android/app/src/main/res
+          i=0
+          for d in mdpi:48:108 hdpi:72:162 xhdpi:96:216 xxhdpi:144:324 xxxhdpi:192:432; do
+            IFS=: read n a f <<< "$d"
+            convert icon-512.png -resize ${a}x${a} $R/mipmap-$n/ic_launcher.png
+            convert icon-512.png -resize ${a}x${a} $R/mipmap-$n/ic_launcher_round.png
+            convert icon-maskable.png -resize ${f}x${f} $R/mipmap-$n/ic_launcher_foreground.png
+          done
+          sed -i 's/#FFFFFF/#e3e9f3/I' $R/values/ic_launcher_background.xml || true
+      - name: Signing key (kept in cache so updates install over the old app)
+        id: key
+        uses: actions/cache@v4
+        with:
+          path: nota.keystore
+          key: nota-keystore-v1
+      - name: Make key if missing
+        run: |
+          [ -f nota.keystore ] || keytool -genkeypair -keystore nota.keystore -storepass notapass -keypass notapass -alias nota -keyalg RSA -keysize 2048 -validity 36500 -dname "CN=Nota"
+      - name: Build
+        run: |
+          cd android
+          ./gradlew assembleDebug --no-daemon -q
+          cd ..
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          $ANDROID_HOME/build-tools/$(ls $ANDROID_HOME/build-tools | sort -V | tail -1)/apksigner sign --ks nota.keystore --ks-pass pass:notapass --key-pass pass:notapass --ks-key-alias nota --out nota.apk $APK
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete app-latest -y --cleanup-tag || true
+          gh release create app-latest nota.apk --title "النوتة (أندرويد)" --notes "نزّل nota.apk وثبّته. آخر بناء: $(date -u +%F' '%H:%M) UTC"
