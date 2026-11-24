@@ -277,10 +277,11 @@ function events() {
   });
   return out;
 }
+const ctxText = (t) => { const p = t.parentId && S.tasks.find((x) => x.id === t.parentId); return p ? p.text + " › " + t.text : t.text; };
 function fireEvent(e) {
   const k = e.t.id + "@" + e.at; if (fired[k]) return; markFired(k);
   const l = listOf(e.t.listId);
-  API.notify(e.lead ? { title: "تذكير بعد " + fmtLead(e.lead), body: e.t.text + (l ? "\n" + l.name : "") } : { title: "ميعاد دلوقتي", body: e.t.text + (l ? "\n" + l.name : "") });
+  API.notify(e.lead ? { title: "تذكير بعد " + fmtLead(e.lead), body: ctxText(e.t) + (l ? "\n" + l.name : "") } : { title: "ميعاد دلوقتي", body: ctxText(e.t) + (l ? "\n" + l.name : "") });
 }
 function scheduleAll() { tick(); }
 // Polling instead of long timers: survives sleep/wake, clock changes and throttled timers.

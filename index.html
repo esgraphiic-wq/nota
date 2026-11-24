@@ -138,6 +138,8 @@ ul{list-style:none;margin:0;padding:0}
   .page.home>section{min-width:0}
 }
 @media (min-width:1500px){.app{max-width:1500px}.page.home{grid-template-columns:1fr 1fr 1fr}}
+.ctx{color:var(--muted);font-size:13px;margin-inline-end:2px}
+.wq{font-size:19px!important;color:var(--accent)!important}
 
 /* additions for the standalone app */
 .top .right{display:flex;align-items:center;gap:10px}
@@ -530,6 +532,7 @@ function renderHome(page){
       h("button",{class:"ai",text:"لخّص كل حاجة",on:{click:function(){aiSheet(null)}}}),
       h("button",{text:"رتّب الصفحات",on:{click:orderSheet}}))));
   page.appendChild(h("p",{class:"note",text:S.lists.length?(open?"قدامك "+open+" حاجة لسه ماخلصتش.":"مفيش حاجة مستنياك. كله خلص."):"مفيش لستات لسه. دوس + فوق واعمل أول لستة."}));
+  page.appendChild(h("section",{class:"full wis",style:"--tc:var(--accent)"},h("p",{class:"note wq",text:"✦ "+wisdomOf(dayStart(Date.now()))})));
   var ds0=daySummary(dayStart(Date.now()));
   if(ds0.lines.length){
     var tdy=h("section",{class:"full",style:"--tc:var(--accent)"},h("div",{class:"hl"},h("span",{class:"name",style:"font-size:24px",text:"ملخص النهارده"}),
@@ -544,7 +547,7 @@ function renderHome(page){
       h("span",{text:late?late+" متأخر":dues.length+" جاي"})));
     var dl=h("ul");
     dues.slice(0,6).forEach(function(t){
-      var li=row(t),l=S.lists.filter(function(x){return x.id===t.listId})[0];
+      var li=row(t,{ctx:true}),l=S.lists.filter(function(x){return x.id===t.listId})[0];
       li.setAttribute("style",tc(l));dl.appendChild(li);
     });
     ds.appendChild(dl);
@@ -776,6 +779,9 @@ function askNotify(){if(NATIVE){nativeSetup().then(nativeExact);return}try{if(wi
 /* ---------- daily summary ---------- */
 function getSumH(){var v=LS.get("nota.sumh");if(v===null||v===undefined||v==="")return 9;var n=parseInt(v,10);return n>=0&&n<=23?n:9}
 function hm(ms){return new Date(ms).toLocaleTimeString("ar-EG-u-nu-latn",{hour:"numeric",minute:"2-digit"})}
+var WIS=["ابدأ بالأصعب، وباقي اليوم هيبقى أسهل.", "الخطوة الصغيرة اللي بتتكرر كل يوم أقوى من قفزة بتحصل مرة.", "اللي بيحترم وقته، الوقت بيحترمه.", "مش لازم تكون مثالي، لازم تكمّل.", "التركيز على حاجة واحدة بيخلص أكتر من الجري ورا عشرة.", "الصبر مش إنك تستنى، الصبر إنك تفضل شغال وإنت مستني.", "اللي ما بيبدأش النهارده، بكرة هيلاقي نفسه في نفس المكان.", "الجودة بتتبني من التفاصيل اللي محدش شايفها.", "كلمة حلوة للعميل بتفتح باب ماكانش في حسبانك.", "اشتغل بإتقان، السمعة بتمشي قدامك.", "الراحة بعد الإنجاز طعمها غير.", "يوم منظم أحسن من يوم مزحوم.", "اكتب اللي عليك، العقل مش مخزن، العقل مصنع.", "الغلطة اللي بتتعلم منها مش غلطة، دي خبرة.", "اللي بيسأل بيوفّر على نفسه سنين.", "ماتقارنش بدايتك بنهاية غيرك.", "النجاح مجموع مجهودات صغيرة بتتكرر يوم ورا يوم.", "ابدأ بنية صافية، والباقي بييجي.", "اللي يقدر يقول لأ في الوقت المناسب، يقدر يقول آه لحاجة أهم.", "الاستعجال بيضيّع من الجودة أكتر ما بيكسب من الوقت.", "المهم مش إنك مشغول، المهم إنك مشغول بإيه.", "الأمانة في الشغل رأس مال ما بيخسرش.", "اهدى شوية، أحسن القرارات بتتاخد بدماغ رايقة.", "كل مهمة بتخلصها بتخفف حمل على دماغك.", "الشاطر مش اللي مابيغلطش، الشاطر اللي بيصلّح بسرعة.", "ابتسامتك في أول اليوم بتفرق في آخره.", "الانضباط حرية، لأنه بيوفر عليك قلق اللحظة الأخيرة.", "لما تتعب، غيّر الطريقة مش الهدف.", "الشغل اللي بتحبه مش بيتعّب زي اللي بتكرهه.", "اللي بيتعب النهارده، بيرتاح بكرة.", "العميل الراضي أحسن إعلان.", "نظّم مكتبك ينتظم فكرك.", "ما فيش مستحيل، فيه خطوات لسه ماتعملتش.", "ابدأ من اللي في إيدك دلوقتي.", "الوقت اللي بتوفره في التخطيط بترجعه في التنفيذ مضاعف.", "اشكر على اللي عندك، بيتزود.", "اللي بيتعلم كل يوم حاجة، عمره ما بيقف مكانه.", "الهدوء في الزحمة قوة.", "خلّص اللي في إيدك، وسيب الباقي لوقته.", "ركّز على اللي تقدر تتحكم فيه، وسيب الباقي.", "اختار معاركك، مش كل حاجة تستاهل طاقتك.", "البداية الصح نص الطريق.", "الوعد دين، فاوعد بس باللي تقدر تنفذه.", "اللي بيحافظ على صحته بيحافظ على شغله.", "افتكر دايماً: النهارده فرصة جديدة.", "الدقة في المواعيد احترام للناس قبل ما تكون التزام.", "الأفكار الكبيرة بتتحول لواقع بقوائم صغيرة متنفذة."];
+function wisdomOf(d0){return WIS[Math.floor(d0/864e5)%WIS.length]}
+function ctxText(t){var p=parentOf(t);return p?p.text+" › "+t.text:t.text}
 function daySummary(d0){
   var d1=d0+864e5;
   var tasks=S.tasks.filter(function(t){return !t.done&&!t._tmp&&!isMoney(listById(t.listId))});
@@ -783,7 +789,7 @@ function daySummary(d0){
   var late=tasks.filter(function(t){return t.due&&t.due<d0});
   var open=tasks.filter(function(t){return isTop(t)}).length;
   var lines=[];
-  if(today.length){lines.push("مواعيد اليوم ("+today.length+"):");today.slice(0,6).forEach(function(t){lines.push("• "+hm(t.due)+"  "+t.text)});if(today.length>6)lines.push("و "+(today.length-6)+" كمان")}
+  if(today.length){lines.push("مواعيد اليوم ("+today.length+"):");today.slice(0,6).forEach(function(t){lines.push("• "+hm(t.due)+"  "+ctxText(t))});if(today.length>6)lines.push("و "+(today.length-6)+" كمان")}
   if(late.length)lines.push("متأخر: "+late.length);
   if(open)lines.push("مهام مفتوحة: "+open);
   return{today:today,late:late,open:open,lines:lines};
@@ -851,8 +857,8 @@ function nativeSync(){
         for(var i=0;i<7;i++){
           var d0=dayStart(now)+i*864e5,at=d0+H*3600000;
           if(at<=now+60000)continue;
-          var sm=daySummary(d0);if(!sm.lines.length)continue;
-          list.push({id:880000000+i,title:"ملخص اليوم",body:sm.lines.slice(0,3).join(" · "),largeBody:sm.lines.join("\n"),summaryText:"النوتة",
+          var sm=daySummary(d0),wz="✦ "+wisdomOf(d0);
+          list.push({id:880000000+i,title:"ملخص اليوم",body:(sm.lines.slice(0,3).join(" · ")+" · "+wz).replace(/^ · /,""),largeBody:sm.lines.concat(["",wz]).join("\n"),summaryText:"النوتة",
             channelId:"summary",schedule:{at:new Date(at),allowWhileIdle:true},extra:{sum:1}});
         }
       }
@@ -1029,7 +1035,7 @@ function row(t,o){
   return h("li",{class:"row"+(t.done?" done":"")+(o.sub?" sub":"")+(S.fresh===t.id?" fresh":"")},
     h("button",{class:"chk","aria-pressed":t.done?"true":"false","aria-label":(t.done?"رجّع: ":"خلصت: ")+t.text,
       on:{click:function(){toggle(t)}}},h("span")),
-    h("button",{class:"txt-btn","aria-label":"عدّل: "+t.text,on:{click:function(){taskSheet(t)}}},t.text,
+    h("button",{class:"txt-btn","aria-label":"عدّل: "+t.text,on:{click:function(){taskSheet(t)}}},(o.ctx&&parentOf(t))?h("small",{class:"ctx",text:parentOf(t).text+" › "}):null,t.text,
       kids.length?h("small",{class:"due prog",text:dn+"/"+kids.length}):null,
       t.due?h("small",{class:"due"+(!t.done&&t.due<Date.now()?" late":""),text:fmtDue(t.due)}):null),
     o.plus?h("button",{class:"plus","aria-label":"ضيف نقطة فرعية تحت: "+t.text,text:"+",on:{click:function(){subSheet(t)}}}):null);
