@@ -169,9 +169,11 @@ else {
   app.on("window-all-closed", () => {});
 
   /* ---------- IPC ---------- */
+  const keep = new Set();
   ipcMain.on("notify", (_e, n) => {
     if (!settings.notifications || !Notification.isSupported()) return;
     const x = new Notification({ title: String(n.title || "النوتة"), body: String(n.body || ""), silent: false });
+    keep.add(x); x.on("close", () => keep.delete(x)); x.on("failed", () => keep.delete(x));
     x.on("click", () => { if (settings.widget === "hide") openNotes(); else showBubble(true); });
     x.show();
   });

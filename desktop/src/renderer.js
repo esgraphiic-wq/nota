@@ -282,8 +282,9 @@ function fireEvent(e) {
   const l = listOf(e.t.listId);
   API.notify(e.lead ? { title: "تذكير بعد " + fmtLead(e.lead), body: e.t.text + (l ? "\n" + l.name : "") } : { title: "ميعاد دلوقتي", body: e.t.text + (l ? "\n" + l.name : "") });
 }
-function scheduleAll() {
-  timers.forEach(clearTimeout); timers = [];
+function scheduleAll() { tick(); }
+// Polling instead of long timers: survives sleep/wake, clock changes and throttled timers.
+function tick() {
   if (!S.ready) return;
   const now = Date.now(), evs = events();
   if (!startupDone) {
@@ -293,16 +294,17 @@ function scheduleAll() {
     if (missed.length === 1) API.notify({ title: "فاتك ميعاد", body: missed[0].t.text });
     else if (missed.length > 1) API.notify({ title: "فاتك " + missed.length + " مواعيد", body: missed.slice(0, 4).map((e) => "• " + e.t.text).join("\n") });
   }
-  evs.filter((e) => e.at > now && e.at < now + 30 * 36e5).forEach((e) => timers.push(setTimeout(() => fireEvent(e), e.at - now)));
-  // morning summary
+  const due = evs.filter((e) => e.at <= now && e.at > now - 20 * 6e4 && !fired[e.t.id + "@" + e.at]);
+  if (due.length > 3) { due.forEach((e) => markFired(e.t.id + "@" + e.at)); API.notify({ title: "فاتك " + due.length + " مواعيد", body: due.slice(0, 4).map((e) => "• " + e.t.text).join("\n") }); }
+  else due.forEach(fireEvent);
   const H = S.settings.summaryHour;
   if (H > 0) {
     const today = new Date().toDateString(), at = dayStart(now) + H * 36e5;
-    const sent = localStorage.getItem("nota.sumday") === today;
-    if (!sent && now >= at && now < at + 4 * 36e5) sendSummary();
-    else if (!sent && now < at) timers.push(setTimeout(sendSummary, at - now));
+    if (localStorage.getItem("nota.sumday") !== today && now >= at && now < at + 8 * 36e5) sendSummary();
   }
 }
+setInterval(tick, 15000);
+document.addEventListener("visibilitychange", tick);
 function sendSummary() {
   const today = new Date().toDateString(); if (localStorage.getItem("nota.sumday") === today) return;
   localStorage.setItem("nota.sumday", today);
@@ -322,6 +324,5 @@ backend.onAuth((u) => {
   if (u) unsub = backend.subscribe(u.uid, (d) => { S.lists = d.lists; S.tasks = d.tasks; S.fromCache = d.fromCache; S.ready = true; if (!S.fading.size) render(); else updateBadge(); reportCount(); scheduleAll(); });
 });
 setInterval(() => { if (S.user && S.ready && !S.fading.size && !S.panel) render(); reportCount(); }, 60000);
-setInterval(scheduleAll, 30 * 60000);
 window.addEventListener("online", render); window.addEventListener("offline", render);
 render();
